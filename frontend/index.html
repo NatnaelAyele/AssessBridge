@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d3a78" />
+    <title>Sign in | AssessBridge</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="js/login.js" defer></script>
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="intro-panel" aria-label="About AssessBridge">
+        <div class="brand brand-light">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
+          <span>AssessBridge</span>
+        </div>
+
+        <div class="intro-content">
+          <span class="eyebrow">SECURE ASSESSMENT PLATFORM</span>
+          <h1>A clearer path to every opportunity.</h1>
+          <p>Access your assessments, manage recruitment, and review results from one trusted place.</p>
+          <div class="role-list" aria-label="Platform users">
+            <span>For candidates</span>
+            <span>For employer personnel</span>
+            <span>For auditors</span>
+          </div>
+        </div>
+
+        <p class="intro-footer">Assess with confidence.</p>
+        <div class="panel-orbit orbit-one" aria-hidden="true"></div>
+        <div class="panel-orbit orbit-two" aria-hidden="true"></div>
+      </section>
+
+      <section class="login-panel" aria-labelledby="login-heading">
+        <div class="mobile-brand brand">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
+          <span>AssessBridge</span>
+        </div>
+
+        <div class="login-content">
+          <div class="heading-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="10" width="14" height="11" rx="2"></rect>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"></path>
+            </svg>
+          </div>
+          <p class="section-label">WELCOME BACK</p>
+          <h2 id="login-heading">Sign in to your account</h2>
+          <p class="login-description">Candidates use their registered email. Employer personnel and auditors use their username.</p>
+
+          <form id="login-form" novalidate>
+            <div class="field">
+              <label for="username">Email or username</label>
+              <input id="username" name="username" type="text" autocomplete="username" placeholder="Candidate email or staff username" required aria-describedby="username-error" />
+              <p class="field-error" id="username-error" hidden>Please enter your email or username.</p>
+            </div>
+
+            <div class="field">
+              <label for="password">Password</label>
+              <div class="password-field">
+                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required aria-describedby="password-error" />
+                <button id="toggle-password" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"></path>
+                    <circle cx="12" cy="12" r="2.5"></circle>
+                  </svg>
+                </button>
+              </div>
+              <p class="field-error" id="password-error" hidden>Please enter your password.</p>
+            </div>
+
+            <button class="sign-in-button" type="submit">Sign in <span aria-hidden="true">→</span></button>
+            <p id="form-message" class="form-message" role="status" aria-live="polite" hidden></p>
+          </form>
+
+          <div id="signed-in-panel" class="signed-in-panel" hidden>
+            <p class="signed-in-label">SIGNED IN</p>
+            <p id="signed-in-user" class="signed-in-user"></p>
+            <p id="signed-in-role" class="signed-in-role"></p>
+            <button id="sign-out-button" class="sign-out-button" type="button">Sign out</button>
+            <p id="sign-out-message" class="field-error" role="status" hidden></p>
+          </div>
+
+          <p class="access-note">New candidate? <a href="/register">Register with your email</a>.</p>
+        </div>
+
+        <footer class="login-footer">© <span id="year">2026</span> AssessBridge</footer>
+      </section>
+    </main>
+  </body>
+</html>
