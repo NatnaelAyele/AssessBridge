@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Enter exam | AssessBridge</title>
+    <link rel="stylesheet" href="/css/candidate.css" />
+    <link rel="stylesheet" href="/css/exam-entry.css" />
+    <script src="/js/seb-client.js" defer></script>
+    <script src="/js/exam-entry.js?v=20261106-recovery-2" defer></script>
+  </head>
+  <body>
+    <main class="entry-shell">
+      <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span><span>AssessBridge</span></a>
+      <div class="entry-heading">
+        <p class="eyebrow">CANDIDATE EXAM ENTRY</p>
+        <h1>Enter your assessment</h1>
+        <p>Sign in to the candidate account registered with the email that received your invitation, then enter its exam-only credentials.</p>
+        <p>New candidate? Select Exit SEB below. In a regular browser, use the registration link in your invitation and verify your email before opening SEB again.</p>
+      </div>
+      <section class="entry-card" aria-labelledby="entry-step-title">
+        <p id="entry-step" class="step-label">Step 1 of 2</p>
+        <h2 id="entry-step-title">Candidate account</h2>
+        <form id="account-form" novalidate>
+          <div class="field"><label for="account-username">Candidate email</label><input id="account-username" type="email" autocomplete="email" maxlength="254" required /></div>
+          <div class="field"><label for="account-password">Password</label><input id="account-password" type="password" autocomplete="current-password" required /></div>
+          <button class="primary-button" type="submit">Continue</button>
+        </form>
+        <div id="exam-step" hidden>
+          <p id="signed-in-as" class="signed-in-as"></p>
+          <p id="config-hint" class="signed-in-as" hidden>This SEB link is for one invitation. To take another exam, exit SEB and open that exam's link.</p>
+          <form id="exam-form" novalidate>
+            <div class="field"><label for="exam-username">Exam username</label><input id="exam-username" autocomplete="off" maxlength="64" required /></div>
+            <div class="field"><label for="exam-password">Exam password</label><input id="exam-password" type="password" autocomplete="off" required /></div>
+            <button class="primary-button" type="submit">Check exam access</button>
+          </form>
+          <button id="switch-account" class="text-button switch-account" type="button">Use another candidate account</button>
+        </div>
+        <p id="entry-message" class="feedback" role="status" aria-live="polite" hidden></p>
+        <div id="exam-result" class="exam-result" hidden>
+          <h3 id="exam-title"></h3>
+          <p id="exam-window"></p>
+          <p id="exam-status"></p>
+          <a id="open-exam-room" class="primary-button" href="/exam-room" hidden>Open assessment</a>
+          <a id="leave-seb" class="secondary-button" href="/seb/exit" hidden>Exit SEB</a>
+          <button id="try-another-exam" class="text-button switch-account" type="button">Enter another exam's credentials</button>
+        </div>
+        <p class="entry-footer-link"><a href="/seb/exit">Exit SEB</a> before starting an exam. No quit code is needed for this link.</p>
+      </section>
+    </main>
+  </body>
+</html>
