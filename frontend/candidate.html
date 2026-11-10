@@ -1,0 +1,35 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b4c9c" />
+    <title>Candidate dashboard | AssessBridge</title>
+    <link rel="stylesheet" href="/css/candidate.css?v=20261106-connectivity" />
+    <script src="/js/candidate.js?v=20261106-recovery-2" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/candidate"><span class="brand-mark" aria-hidden="true">A</span><span>AssessBridge</span></a>
+        <div class="account"><span id="account-name">Candidate</span><button id="sign-out" class="text-button" type="button">Sign out</button></div>
+      </header>
+      <main class="main-content">
+        <div class="page-heading"><p class="eyebrow">CANDIDATE DASHBOARD</p><h1>Your assessments</h1><p class="page-subtitle">Your invitations and completed exams appear here for your registered email.</p></div>
+        <nav class="tabs" aria-label="Candidate sections">
+          <button id="enter-tab" class="tab is-active" type="button" aria-selected="true">Enter exam</button>
+          <button id="history-tab" class="tab" type="button" aria-selected="false">History</button>
+        </nav>
+        <p id="dashboard-message" class="feedback" role="alert" hidden></p>
+        <section id="enter-panel" class="panel" aria-labelledby="enter-tab">
+          <div class="intro"><div class="intro-icon" aria-hidden="true">↗</div><div><h2>Your invitations</h2><p>Use the exam link and configuration password from your invitation email. SEB will open the correct exam entry page.</p></div></div>
+          <div id="active-list" class="assessment-list" aria-live="polite"><p class="list-loading">Loading your invitations…</p></div>
+        </section>
+        <section id="history-panel" class="panel" aria-labelledby="history-tab" hidden>
+          <div class="intro"><div class="intro-icon" aria-hidden="true">✓</div><div><h2>Exam history</h2><p>Completed exams and published results.</p></div></div>
+          <div id="history-list" class="assessment-list" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
