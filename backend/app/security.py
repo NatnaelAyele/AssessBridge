@@ -6,6 +6,7 @@ import bcrypt
 from jose import JWTError, jwt
 
 from .config import JWT_SECRET, SESSION_MINUTES
+import hashlib
 
 
 ALGORITHM = "HS256"
@@ -74,4 +75,3 @@ def read_exam_access(token: str) -> tuple[int, int, bool] | None:
         return (user_id, invitation_id, payload.get("seb_verified") is True) if user_id > 0 and invitation_id > 0 else None
     except (JWTError, KeyError, TypeError, ValueError):
         return None
-import hashlib
