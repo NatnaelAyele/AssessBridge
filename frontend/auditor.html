@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Auditor workspace | AssessBridge</title>
+    <link rel="stylesheet" href="/css/employer.css" />
+    <link rel="stylesheet" href="/css/employer-review.css?v=20261106-interruptions" />
+    <link rel="stylesheet" href="/css/auditor.css?v=20261106-connectivity" />
+    <script src="/js/audit-player.js" defer></script>
+    <script src="/js/connectivity-case.js?v=20261106-review2" defer></script>
+    <script src="/js/auditor.js?v=20261107-identity-options" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Auditor navigation">
+        <div class="sidebar-top"><a class="brand" href="/auditor"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>AssessBridge</span></a><span class="workspace-label">AUDITOR WORKSPACE</span></div>
+        <nav class="side-nav" aria-label="Workspace sections">
+          <button class="nav-item" data-main-tab="overview" type="button"><span class="nav-dot"></span>Overview</button>
+          <button class="nav-item is-active" data-main-tab="auditing" aria-current="page" type="button"><span class="nav-dot"></span>Assessment auditing</button>
+          <button class="nav-item" data-main-tab="publications" type="button"><span class="nav-dot"></span>Publication history</button>
+        </nav>
+      </aside>
+      <div class="workspace">
+        <header class="topbar"><span class="topbar-context">Employer Company Representative Auditor</span><div class="topbar-account"><span class="account-avatar" aria-hidden="true">AU</span><span id="account-name"></span><button id="sign-out" class="text-button" type="button">Sign out</button></div></header>
+        <main class="main-content">
+          <div class="page-heading"><div><p class="eyebrow">ASSESSBRIDGE / AUDITOR</p><h1 id="page-title">Assessment auditing</h1></div></div>
+          <p id="page-message" class="feedback-message" role="status" hidden></p>
+          <section data-main-pane="overview" aria-label="Overview" hidden></section>
+          <section data-main-pane="publications" aria-label="Publication history" hidden>
+            <div id="history-list-view" class="card section-card">
+              <div class="section-card-head"><h2>Published results</h2><button id="history-refresh" class="secondary-button" type="button">Refresh</button></div>
+              <form id="history-filters" class="history-filters">
+                <label class="history-search">Search exam name or code<input id="history-search" type="search" maxlength="120" placeholder="Search publications…" /></label>
+                <label>Published date<select id="history-period"><option value="all">Any time</option><option value="today">Today</option><option value="last7">Last 7 days</option><option value="last30">Last 30 days</option><option value="custom">Custom range</option></select></label>
+                <label id="history-from-label" hidden>From<input id="history-from" type="date" /></label>
+                <label id="history-to-label" hidden>To<input id="history-to" type="date" /></label>
+                <button class="secondary-button" type="submit">Search</button><button id="history-clear" class="secondary-button" type="button">Clear filters</button>
+              </form>
+              <div class="table-wrap history-table-wrap"><table class="audit-table publication-history-table"><thead><tr><th>Exam</th><th>Exam code</th><th>Published on</th><th>Published by</th><th>Candidates</th><th><span class="sr-only">Published results</span></th></tr></thead><tbody id="publication-history-rows"></tbody></table></div>
+              <div class="audit-pagination"><span id="history-count" class="review-muted"></span><div><button id="history-previous" class="secondary-button" type="button">Previous</button><button id="history-next" class="secondary-button" type="button">Next</button></div></div>
+            </div>
+            <div id="history-detail-view" hidden>
+              <div class="card audit-view-head"><button id="history-back" class="audit-back" type="button">Back to publication history</button><h2 id="history-detail-title"></h2><p id="history-detail-code" class="review-muted"></p></div>
+              <div id="history-detail-content" hidden>
+                <div class="card section-card"><h3>Publication summary</h3><div id="history-detail-facts" class="review-facts"></div><span class="detail-field-label history-remark-label">Publication remark</span><p id="history-detail-remark" class="audit-preserve"></p></div>
+                <div class="card section-card"><h3>Published candidate results</h3><div class="table-wrap history-table-wrap"><table class="audit-table published-candidates-table"><thead><tr><th>Candidate</th><th>Review outcome</th><th>Original MCQ score</th><th>Written score</th><th>Final score</th><th><span class="sr-only">Candidate report</span></th></tr></thead><tbody id="history-result-rows"></tbody></table></div></div>
+              </div>
+            </div>
+          </section>
+          <section data-main-pane="auditing" aria-label="Assessment auditing">
+            <div id="exam-view" class="card section-card">
+              <div class="section-card-head"><h2>Assessments</h2><button id="exam-refresh" class="secondary-button" type="button">Refresh</button></div>
+              <form id="exam-filters" class="audit-filters">
+                <label>Search name or exam code<input id="exam-search" type="search" maxlength="120" placeholder="Search assessments" /></label>
+                <label>Audit status<select id="exam-audit"><option value="all">All assessments</option><option value="pending">Needs audit</option><option value="audited">Fully audited</option></select></label>
+                <button class="secondary-button" type="submit">Search</button><button id="exam-clear" class="secondary-button" type="button">Clear</button>
+              </form>
+              <div class="table-wrap"><table class="audit-table"><thead><tr><th>Exam</th><th>Exam code</th><th>Closed time</th><th>Candidates</th><th>Reviewed</th><th>Audited</th></tr></thead><tbody id="exam-rows"></tbody></table></div>
+              <div class="audit-pagination"><span id="exam-count" class="review-muted"></span><div><button id="exam-previous" class="secondary-button" type="button">Previous</button><button id="exam-next" class="secondary-button" type="button">Next</button></div></div>
+            </div>
+            <div id="candidate-view" hidden>
+              <div class="card audit-view-head"><button id="back-exams" class="audit-back" type="button">Back to assessments</button><h2 id="candidate-exam-title"></h2><p id="candidate-exam-code" class="review-muted"></p></div>
+              <section id="publication-panel" class="card section-card publication-panel" aria-label="Result publication" hidden>
+                <div class="section-card-head"><div><h2>Result publication</h2><strong id="publication-status"></strong></div><button id="publish-open" class="primary-button" type="button" disabled>Approve and publish results</button></div>
+                <p id="publication-count" class="review-muted"></p><p id="publication-blocker" class="publication-blocker" hidden></p>
+                <div id="publication-record" hidden><p id="publication-by" class="review-muted"></p><span class="detail-field-label">Publication remark</span><p id="publication-remark" class="audit-preserve"></p></div>
+              </section>
+              <div class="card section-card"><div class="section-card-head"><h2>Candidates</h2><button id="candidate-refresh" class="secondary-button" type="button">Refresh</button></div>
+                <div class="audit-candidate-filters"><label>Search name or email<input id="candidate-search" type="search" /></label><label>Audit status<select id="candidate-audit"><option value="all">All candidates</option><option value="pending">Needs audit</option><option value="audited">Audited</option></select></label></div>
+                <div class="table-wrap"><table class="audit-table"><thead><tr><th>Candidate</th><th>Exam status</th><th>Final recorded result</th><th>Audit status</th><th><span class="sr-only">Audit report</span></th></tr></thead><tbody id="candidate-rows"></tbody></table></div>
+              </div>
+            </div>
+            <div id="case-view" hidden>
+              <div class="card audit-view-head"><button id="back-candidates" class="audit-back" type="button">Back to candidates</button><div class="audit-case-heading"><div><span class="detail-field-label">Exam</span><h2 id="case-exam-title"></h2><span class="detail-field-label">Candidate</span><h3 id="case-name"></h3><p id="case-email" class="review-muted"></p></div><button id="case-reload" class="secondary-button" type="button">Reload report</button></div></div>
+              <div id="audit-action-bar" class="card audit-action-bar"><div><strong id="audit-status"></strong><p id="audit-attribution" class="review-muted"></p></div><button id="mark-audited" class="primary-button" type="button">Mark as audited</button></div>
+              <div class="review-tabs audit-tabs" role="tablist" aria-label="Audit report">
+                <button id="audit-results-tab" data-case-tab="results" role="tab" aria-selected="true" aria-controls="audit-results" type="button">Results</button>
+                <button id="audit-reviewer-tab" data-case-tab="reviewer" role="tab" aria-selected="false" aria-controls="audit-reviewer" tabindex="-1" type="button">Reviewer information</button>
+                <button id="audit-integrity-tab" data-case-tab="integrity" role="tab" aria-selected="false" aria-controls="audit-integrity" tabindex="-1" type="button">Integrity Flags &amp; Events</button>
+              </div>
+              <section id="audit-results" data-case-pane="results" role="tabpanel" aria-labelledby="audit-results-tab"><div id="audit-grade-facts" class="review-facts"></div><div class="card section-card"><h3>Reason for the final result</h3><p id="audit-result-reason" class="audit-preserve"></p></div><div class="card section-card"><h3>Answers and recorded grades</h3><div id="audit-answers"></div></div></section>
+              <section id="audit-reviewer" data-case-pane="reviewer" role="tabpanel" aria-labelledby="audit-reviewer-tab" hidden><div id="reviewer-facts" class="review-facts"></div><div class="card section-card"><h3>Review history</h3><div id="reviewer-history"></div></div></section>
+              <section id="audit-integrity" data-case-pane="integrity" role="tabpanel" aria-labelledby="audit-integrity-tab" hidden>
+                <div class="review-tabs audit-inner-tabs" role="tablist" aria-label="Integrity evidence"><button id="integrity-recordings-tab" data-integrity-tab="recordings" role="tab" aria-selected="true" aria-controls="integrity-recordings" type="button">Recordings</button><button id="integrity-flags-tab" data-integrity-tab="flags" role="tab" aria-selected="false" aria-controls="integrity-flags" tabindex="-1" type="button">Flags</button><button id="integrity-connectivity-tab" data-integrity-tab="connectivity" role="tab" aria-selected="false" aria-controls="integrity-connectivity" tabindex="-1" type="button">Interruptions</button></div>
+                <section id="integrity-recordings" data-integrity-pane="recordings" role="tabpanel" aria-labelledby="integrity-recordings-tab"><div class="card section-card"><h3>Full session recording</h3><button id="recording-toggle" class="secondary-button" type="button">Open recording</button><p id="recording-state" class="review-muted"></p><div id="full-player-host" class="review-evidence" hidden></div></div><div class="card section-card"><h3>Monitoring coverage</h3><div id="audit-coverage" class="review-facts"></div><p id="audit-processing" class="review-muted"></p></div><div class="card section-card"><h3>Identity verification</h3><div id="identity-facts" class="review-facts"></div><div class="audit-image-actions"><button id="identity-toggle" class="secondary-button" type="button">Open verification images</button></div><div id="identity-images" class="audit-images" hidden></div></div></section>
+                <section id="integrity-flags" data-integrity-pane="flags" role="tabpanel" aria-labelledby="integrity-flags-tab" hidden><div id="audit-flags"></div></section>
+                <section id="integrity-connectivity" data-integrity-pane="connectivity" role="tabpanel" aria-labelledby="integrity-connectivity-tab" hidden><div id="audit-connectivity-case"></div></section>
+              </section>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <dialog id="publication-dialog" class="confirmation-dialog" aria-labelledby="publication-dialog-title">
+      <form id="publication-form">
+        <h2 id="publication-dialog-title">Approve and publish results?</h2>
+        <p id="publication-confirm-exam"></p><p id="publication-confirm-count"></p>
+        <label for="publication-note">Remark</label><textarea id="publication-note" rows="4" maxlength="5000" required></textarea>
+        <p id="publication-error" class="feedback-message" data-tone="error" role="alert" hidden></p>
+        <div class="confirmation-actions"><button id="publish-confirm" class="primary-button" type="submit">Confirm and publish</button><button id="publish-cancel" class="secondary-button" type="button">Cancel</button></div>
+      </form>
+    </dialog>
+  </body>
+</html>
