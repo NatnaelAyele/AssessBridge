@@ -92,8 +92,8 @@ def _status(cursor, session_id):
             "status": "audited" if matching else "changed" if history else "pending"}, snapshot
 
 
-def assessments(page=1, search="", audit="all"):
-    where, params = ["a.ends_at<=UTC_TIMESTAMP()"], []
+def assessments(page=1, search="", audit="all", company_id=None):
+    where, params = ["a.ends_at<=UTC_TIMESTAMP()", "a.company_id=%s"], [company_id]
     if search:
         where.append("(LOCATE(LOWER(%s),LOWER(a.title))>0 OR LOCATE(LOWER(%s),LOWER(COALESCE(a.internal_reference,'')))>0)")
         params.extend([search, search])

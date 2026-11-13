@@ -94,7 +94,7 @@ class ConnectivityFindingRequest(BaseModel):
 
 def _load(cursor, assessment_id, invitation_id, employer_id):
     # Share the exam lock with publication before taking session locks.
-    cursor.execute("SELECT id FROM assessments WHERE id=%s AND employer_user_id=%s FOR UPDATE", (assessment_id, employer_id))
+    cursor.execute("SELECT id FROM assessments WHERE id=%s AND company_id = (SELECT company_id FROM users WHERE id=%s) FOR UPDATE", (assessment_id, employer_id))
     if not cursor.fetchone():
         raise HTTPException(404, "Candidate session not found")
     cursor.execute(
@@ -102,7 +102,7 @@ def _load(cursor, assessment_id, invitation_id, employer_id):
                   a.duration_minutes,a.starts_at,a.ends_at,a.rules_text
            FROM assessments a JOIN assessment_invitations i ON i.assessment_id=a.id
            JOIN assessment_exam_sessions s ON s.invitation_id=i.id
-           WHERE a.id=%s AND i.id=%s AND a.employer_user_id=%s FOR UPDATE""",
+           WHERE a.id=%s AND i.id=%s AND a.company_id = (SELECT company_id FROM users WHERE id=%s) FOR UPDATE""",
         (assessment_id, invitation_id, employer_id),
     )
     session = cursor.fetchone()
@@ -396,7 +396,7 @@ def reference_photo(assessment_id, invitation_id, employer_id, source_ip):
 def candidate_cards(assessment_id, employer_id):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT id,title,questions_json FROM assessments WHERE id=%s AND employer_user_id=%s", (assessment_id, employer_id))
+        cursor.execute("SELECT id,title,questions_json FROM assessments WHERE id=%s AND company_id = (SELECT company_id FROM users WHERE id=%s)", (assessment_id, employer_id))
         assessment = cursor.fetchone()
         if not assessment:
             raise HTTPException(404, "Assessment not found")

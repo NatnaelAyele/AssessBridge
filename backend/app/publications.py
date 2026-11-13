@@ -104,8 +104,9 @@ def _history_filters(search, period, date_from, date_to):
     return where, parameters
 
 
-def publication_history(page=1, search="", period="all", date_from=None, date_to=None):
+def publication_history(page=1, search="", period="all", date_from=None, date_to=None, company_id=None):
     where, parameters = _history_filters(search, period, date_from, date_to)
+    where.append("a.company_id=%s"); parameters.append(company_id)
     source = "FROM assessment_result_publications p JOIN assessments a ON a.id=p.assessment_id WHERE " + " AND ".join(where)
     with database() as connection:
         cursor = connection.cursor(dictionary=True)

@@ -172,7 +172,7 @@ def report(assessment_id, invitation_id, employer_id, after_id=0, limit=200):
                FROM assessments a JOIN assessment_invitations i ON i.assessment_id=a.id
                JOIN assessment_exam_sessions s ON s.invitation_id=i.id
                LEFT JOIN assessment_monitoring_runs m ON m.session_id=s.id
-               WHERE a.id=%s AND i.id=%s AND a.employer_user_id=%s""",
+               WHERE a.id=%s AND i.id=%s AND a.company_id = (SELECT company_id FROM users WHERE id=%s)""",
             (assessment_id, invitation_id, employer_id),
         )
         session = cursor.fetchone()

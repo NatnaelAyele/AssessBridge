@@ -141,7 +141,7 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
     if ((candidates_min is not None and candidates_max is not None and candidates_min > candidates_max)
             or (questions_min is not None and questions_max is not None and questions_min > questions_max)):
         raise HTTPException(status_code=422, detail="Minimum filter value cannot exceed maximum")
-    where = ["a.employer_user_id = %s"]
+    where = ["a.company_id = (SELECT company_id FROM users WHERE id=%s)"]
     parameters: list = [employer_id]
     if search:
         where.append("(LOCATE(LOWER(%s), LOWER(a.title)) > 0 OR LOCATE(LOWER(%s), LOWER(a.internal_reference)) > 0)")
@@ -205,7 +205,7 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
             cursor.execute(
                 """SELECT id, title, description, internal_reference, duration_minutes,
                           starts_at, ends_at, identity_policy, questions_json, JSON_LENGTH(questions_json) AS question_count
-                   FROM assessments WHERE id = %s AND employer_user_id = %s""",
+                   FROM assessments WHERE id = %s AND company_id = (SELECT company_id FROM users WHERE id=%s)""",
                 (assessment_id, employer_id),
             )
             assessment = cursor.fetchone()
@@ -275,7 +275,7 @@ def invitation_status(assessment_id: int, employer_id: int) -> dict:
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         cursor.execute(
-            "SELECT id, title FROM assessments WHERE id = %s AND employer_user_id = %s",
+            "SELECT id, title FROM assessments WHERE id = %s AND company_id = (SELECT company_id FROM users WHERE id=%s)",
             (assessment_id, employer_id),
         )
         assessment = cursor.fetchone()
@@ -350,6 +350,7 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                     ),
                 )
                 assessment_id = cursor.lastrowid
+                cursor.execute("UPDATE assessments SET company_id=(SELECT company_id FROM users WHERE id=%s) WHERE id=%s", (employer_id,assessment_id))
                 for candidate in payload.candidates:
                     cursor.execute(
                         "SELECT id FROM users WHERE email = %s AND role = 'candidate' AND is_active = TRUE",

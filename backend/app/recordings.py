@@ -355,7 +355,7 @@ def employer_recording(assessment_id: int, invitation_id: int, employer_id: int,
                    JOIN assessment_invitations i ON i.assessment_id = a.id
                    JOIN assessment_exam_sessions s ON s.invitation_id = i.id
                    JOIN assessment_recordings r ON r.session_id = s.id
-                   WHERE a.id = %s AND i.id = %s AND a.employer_user_id = %s""",
+                   WHERE a.id = %s AND i.id = %s AND a.company_id = (SELECT company_id FROM users WHERE id=%s)""",
                 (assessment_id, invitation_id, employer_id),
             )
             recording = cursor.fetchone()
