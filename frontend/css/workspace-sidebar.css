@@ -1,0 +1,28 @@
+/* Shared sidebar palette for company administration, personnel and auditing. */
+:root { --workspace-sidebar-bg: #103f7c; }
+.personnel-dashboard .sidebar,
+.auditor-dashboard .sidebar,
+.admin-sidebar {
+  background: var(--workspace-sidebar-bg);
+  color: #fff;
+  border-color: #103f7c;
+}
+.sidebar .brand, .admin-sidebar .company-brand { color: #fff; }
+.admin-sidebar .brand-symbol { background: #fff; color: var(--workspace-sidebar-bg); }
+.sidebar .workspace-label, .admin-sidebar .workspace-label { color: #b8cfee; }
+.sidebar .nav-item, .admin-sidebar .nav-link { color: #d5e4f7; }
+.sidebar .nav-item:hover, .admin-sidebar .nav-link:hover {
+  background: #ffffff10; color: #fff;
+}
+.sidebar .nav-item.is-active, .admin-sidebar .nav-link.is-active {
+  background: #ffffff1f; border-color: #ffffff30; color: #fff;
+}
+.sidebar .sidebar-bottom, .admin-sidebar .sidebar-footer { color: #fff; border-color: #ffffff26; }
+.sidebar .sidebar-bottom small, .admin-sidebar .sidebar-footer div > span { color: #b8cfee; }
+.sidebar .personnel-role-mark, .sidebar .auditor-role-mark, .admin-sidebar .admin-avatar {
+  background: #ffffff1f; color: #fff;
+}
+.admin-sidebar .nav-count { background: #ffffff24; color: #fff; }
+.sidebar .nav-item:focus-visible, .admin-sidebar .nav-link:focus-visible {
+  outline: 3px solid #b8d9ff; outline-offset: 2px;
+}

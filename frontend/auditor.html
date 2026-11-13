@@ -7,24 +7,26 @@
     <link rel="stylesheet" href="/css/employer.css?v=20261113-lifecycle" />
     <link rel="stylesheet" href="/css/employer-review.css?v=20261113-lifecycle" />
     <link rel="stylesheet" href="/css/auditor.css?v=20261113-overview-focus" />
+    <link rel="stylesheet" href="/css/auditor-workspace.css?v=20261113-refresh" />
+    <link rel="stylesheet" href="/css/workspace-sidebar.css?v=20261113-blue" />
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/audit-player.js?v=20261113-audit" defer></script>
     <script src="/js/connectivity-case.js?v=20261113-audit" defer></script>
     <script src="/js/auditor.js?v=20261113-overview-focus" defer></script>
   </head>
-  <body>
+  <body class="auditor-dashboard">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Auditor navigation">
         <div class="sidebar-top"><a class="brand" href="/auditor"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>AssessBridge</span></a><span class="workspace-label">AUDITOR WORKSPACE</span></div>
         <nav class="side-nav" aria-label="Workspace sections">
-          <button class="nav-item is-active" aria-current="page" data-main-tab="overview" type="button"><span class="nav-dot"></span>Overview</button>
-          <button class="nav-item" data-main-tab="auditing" type="button"><span class="nav-dot"></span>Assessment auditing</button>
-          <button class="nav-item" data-main-tab="publications" type="button"><span class="nav-dot"></span>Publication history</button>
-        </nav>
+          <button class="nav-item is-active" aria-current="page" data-main-tab="overview" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>Overview</button>
+          <button class="nav-item" data-main-tab="auditing" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5v15h14V5h-4M9 3h6v4H9zM8 12l2 2 5-5"/></svg>Assessment auditing</button>
+          <button class="nav-item" data-main-tab="publications" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v15H4zM8 3v4M16 3v4M4 10h16M8 14h3M8 17h7"/></svg>Publication history</button>
+        </nav><div class="sidebar-bottom"><span class="auditor-role-mark" aria-hidden="true">AU</span><div><strong>Company auditor</strong><small>Audit &amp; publication workspace</small></div></div>
       </aside>
       <div class="workspace">
-        <header class="topbar"><span class="topbar-context">Employer Company Representative Auditor</span><div class="topbar-account"><span class="account-avatar" aria-hidden="true">AU</span><span id="account-name"></span><button id="sign-out" class="text-button" type="button">Sign out</button></div></header>
+        <header class="topbar"><a class="mobile-brand brand" href="/auditor"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>AssessBridge</span></a><span class="topbar-context">Employer Company Representative Auditor</span><div class="topbar-account"><span class="account-avatar" aria-hidden="true">AU</span><span id="account-name"></span><button id="sign-out" class="text-button" type="button">Sign out</button></div></header>
         <main class="main-content">
           <div class="page-heading"><div><p class="eyebrow">ASSESSBRIDGE / AUDITOR</p><h1 id="page-title">Overview</h1></div></div>
           <div id="auditor-notifications"></div><div id="page-message" class="editor-feedback-host"></div>

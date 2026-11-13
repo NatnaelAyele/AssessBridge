@@ -11,9 +11,11 @@
     <script src="js/connectivity-case.js?v=20261113-audit" defer></script>
     <script src="js/employer-review.js?v=20261113-audit" defer></script>
     <link rel="stylesheet" href="css/employer-review.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/personnel.css?v=20261113-refresh" />
+    <link rel="stylesheet" href="/css/workspace-sidebar.css?v=20261113-blue" />
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
   </head>
-  <body>
+  <body class="personnel-dashboard">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Employer navigation">
         <div class="sidebar-top">
@@ -25,16 +27,15 @@
         </div>
 
         <nav class="side-nav" aria-label="Workspace sections">
-          <button class="nav-item is-active" type="button" data-tab="overview" aria-current="page"><span class="nav-dot"></span>Overview</button>
-          <button class="nav-item" type="button" data-tab="editor"><span class="nav-dot"></span>Assessment editor</button>
-          <button class="nav-item" type="button" data-tab="detail"><span class="nav-dot"></span>Assessment detail</button>
-          <button class="nav-item" type="button" data-tab="review"><span class="nav-dot"></span>Review cases</button>
-          <button class="nav-item" type="button" data-tab="results"><span class="nav-dot"></span>Results &amp; reports</button>
+          <button class="nav-item is-active" type="button" data-tab="overview" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>Overview</button>
+          <button class="nav-item" type="button" data-tab="editor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Assessment editor</button>
+          <button class="nav-item" type="button" data-tab="detail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>Assessment detail</button>
+          <button class="nav-item" type="button" data-tab="review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5v15h14V5h-4M9 3h6v4H9zM8 12l2 2 5-5"/></svg>Review cases</button>
+          <button class="nav-item" type="button" data-tab="results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M7 16v-5M12 16V4M17 16V8"/></svg>Results &amp; reports</button>
         </nav>
 
         <div class="sidebar-bottom">
-          <p>Secure recruitment assessments, all in one place.</p>
-          <span>Assess with confidence.</span>
+          <span class="personnel-role-mark" aria-hidden="true">EP</span><div><strong>Employer personnel</strong><small>Assessment workspace</small></div>
         </div>
       </aside>
 
@@ -66,33 +67,8 @@
           <div id="session-message" class="editor-feedback-host"></div>
 
           <section class="tab-panel" data-panel="overview" aria-label="Overview">
-            <div class="welcome-card">
-              <div>
-                <p class="eyebrow eyebrow-light">YOUR WORKSPACE</p>
-                <h2>Plan a fair assessment from start to finish.</h2>
-                <p>Create questions, set the rules, prepare the candidate roster, and review the setup before scheduling.</p>
-              </div>
-              <button class="light-button" type="button" data-open-editor>Open assessment editor <span aria-hidden="true">→</span></button>
-            </div>
-
-            <div class="section-heading"><h2>Work areas</h2><p>Choose where to continue.</p></div>
-            <div class="feature-grid">
-              <button class="feature-card" type="button" data-open-tab="editor">
-                <span class="feature-number">01</span><strong>Build an assessment</strong>
-                <span>Basics, questions, rules, candidates, and schedule in a guided sequence.</span>
-                <span class="card-link">Open editor →</span>
-              </button>
-              <button class="feature-card" type="button" data-open-tab="detail">
-                <span class="feature-number">02</span><strong>Assessment detail</strong>
-                <span>Choose a saved assessment to see its schedule, roster, and invitation state.</span>
-                <span class="card-link">View detail →</span>
-              </button>
-              <button class="feature-card" type="button" data-open-tab="review">
-                <span class="feature-number">03</span><strong>Review cases</strong>
-                <span>Review candidate sessions, evidence, and results.</span>
-                <span class="card-link">View structure →</span>
-              </button>
-            </div>
+            <div class="personnel-intro"><div><p class="eyebrow">ASSESSMENT MANAGEMENT</p><h2>Your assessment workspace</h2><p>Create assessments, review sessions, and manage results.</p></div><span class="workspace-emblem" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg></span></div>
+            <div class="section-heading"><h2>Work areas</h2></div><div class="feature-grid"><button class="feature-card" type="button" data-open-tab="editor"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><strong>Create an assessment</strong><span class="feature-description">Prepare questions, candidates, and invitations.</span><span class="card-link">Open editor <span aria-hidden="true">&#8594;</span></span></button><button class="feature-card" type="button" data-open-tab="detail"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg></span><strong>Assessment details</strong><span class="feature-description">View schedules, questions, and candidate progress.</span><span class="card-link">View assessments <span aria-hidden="true">&#8594;</span></span></button><button class="feature-card" type="button" data-open-tab="review"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5v15h14V5h-4M9 3h6v4H9zM8 12l2 2 5-5"/></svg></span><strong>Review cases</strong><span class="feature-description">Grade responses and review session evidence.</span><span class="card-link">Open review cases <span aria-hidden="true">&#8594;</span></span></button><button class="feature-card" type="button" data-open-tab="results"><span class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M7 16v-5M12 16V4M17 16V8"/></svg></span><strong>Results & reports</strong><span class="feature-description">View recorded outcomes and candidate results.</span><span class="card-link">View results <span aria-hidden="true">&#8594;</span></span></button></div>
           </section>
 
           <section class="tab-panel" data-panel="editor" aria-label="Assessment editor" hidden>

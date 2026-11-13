@@ -1,0 +1,89 @@
+/* Auditor workspace presentation. */
+/* Personnel workspace styling; shared auditor pages retain their own layout. */
+.auditor-dashboard {background:#f5f8fc;font-size:14px;line-height:1.5;}
+.auditor-dashboard select {font:inherit;}
+.auditor-dashboard .app-shell {grid-template-columns:240px minmax(0,1fr);}
+.auditor-dashboard .sidebar {position:sticky;top:0;height:100dvh;background:#fff;border-right:1px solid #e0e8f3;color:#204c80;padding:30px 18px 22px;}
+.auditor-dashboard .sidebar-top {padding:2px 10px 32px;}
+.auditor-dashboard .workspace-label {margin-top:18px;color:#8798ae;font-size:9px;letter-spacing:.12em;}
+.auditor-dashboard .side-nav {gap:7px;}
+.auditor-dashboard .nav-item {color:#667d99;font-size:12px;padding:13px 14px;gap:12px;min-height:46px;}
+.auditor-dashboard .nav-item svg {height:18px;width:18px;flex-shrink:0;}
+.auditor-dashboard .nav-item:hover {color:#0b58ad;background:#f5f9ff;}
+.auditor-dashboard .nav-item.is-active {color:#0b58ad;background:#edf4ff;border-color:#dbe8fa;}
+.auditor-dashboard .sidebar-bottom {display:flex;align-items:center;gap:10px;border-top:1px solid #e7eef7;margin-top:auto;padding:22px 0 0;color:#3c587a;}
+.auditor-dashboard .sidebar-bottom strong {display:block;font-size:11px;}
+.auditor-dashboard .sidebar-bottom small {display:block;color:#90a0b5;font-size:10px;margin-top:3px;}
+.auditor-dashboard .auditor-role-mark {width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:#edf4ff;color:#326daa;font-size:11px;font-weight:700;}
+.auditor-dashboard .topbar {min-height:72px;padding:16px 36px;}
+.auditor-dashboard .topbar-context {font-size:12px;font-weight:400;color:#8796aa;}
+.auditor-dashboard .topbar-account {font-size:12px;}
+.auditor-dashboard .main-content {max-width:1560px;padding:32px 36px 64px;}
+.auditor-dashboard .page-heading {margin-bottom:28px;}
+.auditor-dashboard h1 {font-size:30px;letter-spacing:-.8px;margin-bottom:8px;}
+.auditor-dashboard .page-heading p:last-child {font-size:13px;color:#7b8ea8;}
+.auditor-dashboard .eyebrow {font-size:10px;letter-spacing:.13em;}
+.auditor-dashboard .primary-button,.auditor-dashboard .secondary-button {min-height:44px;font-size:12px;border-radius:8px;padding:11px 16px;}
+.auditor-dashboard .card {border-color:#dfe8f3;box-shadow:0 2px 5px #183d6703;border-radius:12px;}
+
+.auditor-dashboard .page-heading {margin-bottom:18px;}
+.auditor-dashboard .overview-heading {margin-bottom:24px;}
+.auditor-dashboard #overview-company {font-weight:600;font-size:13px;color:#547392;}
+.auditor-dashboard #overview-updated {font-size:11px;color:#899bb2;}
+.auditor-dashboard .overview-metrics {gap:18px;margin-bottom:28px;}
+.auditor-dashboard .overview-metrics button {padding:24px;border-color:#dfe8f3;border-radius:12px;gap:12px;box-shadow:0 2px 5px #183d6703;}
+.auditor-dashboard .overview-metrics button:hover {background:#f8fbff;border-color:#9cbee7;}
+.auditor-dashboard .overview-metrics button.is-selected {background:#edf4ff;border-color:#0b58ad;box-shadow:inset 0 3px #0b58ad;}
+.auditor-dashboard .overview-metrics span {font-size:12px;color:#607b99;font-weight:600;}
+.auditor-dashboard .overview-metrics strong {font-size:34px;font-weight:600;letter-spacing:-1px;color:#24588f;}
+.auditor-dashboard .overview-metrics small {font-size:10px;color:#879bb3;}
+.auditor-dashboard .overview-selection {background:#f0f6ff;border-color:#d6e5f8;padding:22px 24px;}
+.auditor-dashboard .overview-selection h2 {font-size:19px;font-weight:600;}
+.auditor-dashboard .overview-selection p {font-size:12px;}
+.auditor-dashboard .section-card {padding:26px;}
+.auditor-dashboard .section-card h2 {font-size:18px;font-weight:600;letter-spacing:-.2px;}
+.auditor-dashboard .section-card h3 {font-size:16px;font-weight:600;}
+.auditor-dashboard .section-card-head {align-items:center;margin-bottom:22px;}
+.auditor-dashboard .section-card-head p {font-size:12px;}
+.auditor-dashboard .audit-filters,.auditor-dashboard .history-filters,.auditor-dashboard .audit-candidate-filters {padding:18px;border:1px solid #e3ebf7;border-radius:10px;background:#f8faff;gap:14px;}
+.auditor-dashboard .audit-filters label,.auditor-dashboard .history-filters label,.auditor-dashboard .audit-candidate-filters label {font-size:11px;}
+.auditor-dashboard .audit-filters input,.auditor-dashboard .audit-filters select,.auditor-dashboard .history-filters input,.auditor-dashboard .history-filters select,.auditor-dashboard .audit-candidate-filters input,.auditor-dashboard .audit-candidate-filters select {font-size:12px;min-height:44px;border-color:#cad9ec;}
+.auditor-dashboard .table-wrap {border:1px solid #e6edf7;border-radius:9px;}
+.auditor-dashboard .audit-table {font-size:12px;}
+.auditor-dashboard .audit-table th {font-size:10px;letter-spacing:.045em;font-weight:600;color:#8296af;padding:14px 16px;background:#f8faff;}
+.auditor-dashboard .audit-table td {padding:18px 16px;font-size:12px;border-color:#eaf0f7;}
+.auditor-dashboard .audit-table tbody tr:hover {background:#fbfdff;}
+.auditor-dashboard .audit-table .audit-exam-link {font-weight:600;}
+.auditor-dashboard .audit-table .secondary-button {font-size:11px;min-height:36px;padding:8px 12px;}
+.auditor-dashboard .audit-pagination {font-size:12px;padding-top:4px;}
+.auditor-dashboard .overview-list>div {padding:20px 0;border-color:#e7eef7;}
+.auditor-dashboard .overview-list strong {font-weight:600;font-size:14px;}
+.auditor-dashboard .overview-list p {font-size:11px;line-height:1.7;color:#8397af;}
+.auditor-dashboard .overview-list .secondary-button {font-size:11px;min-height:38px;padding:8px 12px;}
+.auditor-dashboard .overview-pending {gap:8px;}
+.auditor-dashboard .overview-pending span {font-size:12px;}
+.auditor-dashboard .audit-view-head {padding:26px;margin-bottom:24px;}
+.auditor-dashboard .audit-back {display:inline-flex;align-items:center;min-height:36px;padding:7px 11px;border:1px solid #dce7f5;border-radius:7px;background:#f8fbff;font-size:12px;font-weight:600;margin-bottom:14px;}
+.auditor-dashboard .audit-back:hover {background:#edf4ff;border-color:#a8c5e9;}
+.auditor-dashboard .audit-view-head h2 {font-size:23px;letter-spacing:-.5px;}
+.auditor-dashboard .audit-case-heading h3 {font-size:18px;font-weight:600;}
+.auditor-dashboard .audit-action-bar {padding:22px 26px;border-radius:12px;margin-bottom:24px;}
+.auditor-dashboard .audit-action-bar h3 {font-size:16px;}
+.auditor-dashboard .review-tabs {padding:5px;border-color:#dfe8f3;gap:4px;}
+.auditor-dashboard .review-tabs button {font-size:12px;min-height:44px;font-weight:600;}
+.auditor-dashboard .review-tabs button[aria-selected=true] {background:#edf4ff;}
+.auditor-dashboard .audit-inner-tabs {background:#f8faff;}
+.auditor-dashboard .audit-status-pill {border-radius:6px;font-size:10px;padding:5px 9px;font-weight:600;}
+.auditor-dashboard .audit-finding {background:#f8fbff;border-color:#e1eaf6;border-radius:10px;padding:20px;}
+.auditor-dashboard .audit-finding h4 {font-size:11px;letter-spacing:.02em;}
+.auditor-dashboard .audit-finding p {font-size:13px;}
+.auditor-dashboard .audit-images figure {background:#fbfdff;border-color:#e1eaf6;padding:20px;}
+.auditor-dashboard .publication-panel {border-top:3px solid #9abfea;}
+.auditor-dashboard .audit-history-entry {padding:20px 0;}
+@media(max-width:1200px){.auditor-dashboard .app-shell{grid-template-columns:210px minmax(0,1fr)}.auditor-dashboard .sidebar{padding-inline:12px}.auditor-dashboard .main-content{padding:28px}.auditor-dashboard .overview-metrics{gap:12px}.auditor-dashboard .overview-metrics button{padding:20px}}
+@media(max-width:800px){.auditor-dashboard .app-shell{display:block}.auditor-dashboard .sidebar{position:static;height:auto;padding:12px 16px;border-right:0;border-bottom:1px solid #e0e8f3}.auditor-dashboard .sidebar-top,.auditor-dashboard .sidebar-bottom{display:none}.auditor-dashboard .side-nav{display:flex}.auditor-dashboard .nav-item{min-height:42px;width:auto;padding:10px 12px}.auditor-dashboard .nav-item svg{display:none}.auditor-dashboard .topbar{padding:14px 20px}.auditor-dashboard .main-content{padding:24px 20px 48px}}
+@media(max-width:650px){.auditor-dashboard .main-content{padding:22px 16px 44px}.auditor-dashboard h1{font-size:27px}.auditor-dashboard .section-card,.auditor-dashboard .audit-view-head,.auditor-dashboard .audit-action-bar{padding:20px}.auditor-dashboard .overview-metrics{gap:12px}.auditor-dashboard .overview-metrics button{padding:18px;gap:8px}.auditor-dashboard .overview-metrics strong{font-size:29px}.auditor-dashboard .overview-metrics span{font-size:11px}.auditor-dashboard .overview-selection{padding:18px}.auditor-dashboard .audit-filters,.auditor-dashboard .history-filters,.auditor-dashboard .audit-candidate-filters{padding:14px}.auditor-dashboard .history-table-wrap{border:0;border-radius:0}.auditor-dashboard .history-table-wrap td{padding:10px 0}.auditor-dashboard .overview-list>div{gap:12px}.auditor-dashboard .review-tabs button{font-size:11px}}
+
+@media(min-width:1251px){.auditor-dashboard .overview-work-grid:not(.is-focused){grid-template-columns:minmax(0,1fr) 310px;}}
+@media(max-width:800px){.auditor-dashboard .side-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible}.auditor-dashboard .nav-item{justify-content:center;text-align:center;white-space:normal;font-size:11px;padding:10px 7px;min-width:0}.auditor-dashboard .mobile-brand{font-size:16px}}
+@media(max-width:650px){.auditor-dashboard .section-card-head{align-items:flex-start;flex-direction:column;gap:10px}.auditor-dashboard .section-card-head>.text-button{border-left:0;padding:4px 0;font-size:12px}.auditor-dashboard .overview-list .secondary-button{max-width:100%;white-space:normal}}
