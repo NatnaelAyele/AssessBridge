@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0d3a78" />
     <title>Sign in | AssessBridge</title>
-    <link rel="stylesheet" href="/css/styles.css?v=20261112-feedback" />
+    <link rel="stylesheet" href="/css/styles.css?v=20261113-company-design" />
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/account-feedback.js?v=20261112" defer></script>
-    <script src="/js/login.js?v=20261112-feedback" defer></script>
+    <script src="/js/login.js?v=20261113-companies" defer></script>
   </head>
   <body>
     <main class="page-shell">
@@ -50,13 +50,13 @@
           </div>
           <p class="section-label">WELCOME BACK</p>
           <h2 id="login-heading">Sign in to your account</h2>
-          <p class="login-description">Candidates use their registered email. Employer personnel and auditors use their username.</p>
+          <p class="login-description">Sign in with your registered email or username.</p>
 
           <div id="account-notifications"></div>
           <form id="login-form" novalidate>
             <div class="field">
               <label for="username">Email or username</label>
-              <input id="username" name="username" type="text" autocomplete="username" placeholder="Candidate email or staff username" required />
+              <input id="username" name="username" type="text" autocomplete="username" placeholder="Email or username" required />
             </div>
 
             <div class="field">
@@ -72,6 +72,7 @@
               </div>
             </div>
 
+            <div class="login-recovery"><a href="/company-access?reset=1">Forgot staff password?</a></div>
             <button class="sign-in-button" type="submit">Sign in <span aria-hidden="true">→</span></button>
             <div id="form-message"></div>
           </form>
@@ -84,6 +85,7 @@
             <div id="sign-out-message"></div>
           </div>
 
+          <div class="company-entry"><div><span class="company-entry-label">FOR ORGANIZATIONS</span><strong>Set up your company workspace</strong></div><a href="/company-register">Register company <span aria-hidden="true">&#8594;</span></a></div>
           <p class="access-note">New candidate? <a href="/register">Register with your email</a>.</p>
         </div>
 

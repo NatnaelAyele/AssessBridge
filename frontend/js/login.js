@@ -26,6 +26,7 @@ function showMessage(text) {
 }
 
 function showAuthenticated(user) {
+  if (user.role === "company_admin") { location.assign("/company-admin"); return; }
   password.value = "";
   if (user.role === "employer_personnel") {
     window.location.assign("/employer");
