@@ -16,12 +16,47 @@
   let historyPage = 1, historySerial = 0;
   let historyDetailSerial = 0, historyReportId = null, historySearchTimer = null;
   const base = () => `/api/auditor/assessments/${selectedExam.id}/candidates/${selectedInvitation}`;
-  function message(text = "", error = true) { el("page-message").textContent = text; el("page-message").hidden = !text; el("page-message").dataset.tone = error ? "error" : "success"; }
+  const feedback = AssessBridgeFeedback.create({ notificationHost: '#auditor-notifications' });
+  const pageFeedback = feedback.scope('auditor-page');
+  let caseFeedback = feedback.scope('auditor-case');
+  let candidateFeedback = feedback.scope('auditor-candidates');
+  let publicationFeedback = feedback.scope('auditor-publication');
+  let publicationStale = false, publicationDialog = null;
+  let examFeedback = feedback.scope('auditor-exams'), historyFeedback = feedback.scope('auditor-history'), historyDetailFeedback = feedback.scope('auditor-history-detail');
+  const publicationForm = el("publication-form");
+  function notice(scope, target, text, tone = 'error', action) {
+    if (!text) return scope.clear(target);
+    return scope.show({ id: target, target: el(target), text, tone, action });
+  }
+  function message(text = '', error = true) { return notice(pageFeedback, 'page-message', text, error ? 'error' : 'neutral'); }
+  function refreshCase() { if (!saving && selectedInvitation) return openCase(selectedInvitation, true); }
   async function api(url, options = {}) {
-    const response = await fetch(url, { credentials: "same-origin", ...options });
-    if (response.status === 401) { location.replace("/"); throw Error("Please sign in."); }
+    let response;
+    try { response = await fetch(url, { credentials: 'same-origin', ...options }); }
+    catch { throw Error('Could not reach AssessBridge. Try again.'); }
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) { const error = Error(typeof result.detail === "string" ? result.detail : Array.isArray(result.detail) ? result.detail.map(item => item.msg).join("; ") : "Could not complete the request. Try again."); error.status = response.status; throw error; }
+    if (!response.ok) {
+      const detail = typeof result.detail === 'string' ? result.detail : '';
+      const safe = {
+        'Closed assessment not found': 'This closed assessment is unavailable.',
+        'Candidate session not found': 'This candidate session is unavailable.',
+        'Published results not found': 'These published results are unavailable.',
+        'The report changed while loading. Reload the report.': 'The report changed. Reload it to continue.',
+        'The report changed. Reload it before marking it audited.': 'The report changed. Reload it before marking it as audited.',
+        'A completed exam and reviewer decision are required before auditing.': 'A completed attempt and reviewer decision are required before auditing.',
+        'Wait for monitoring to finish before marking the report audited.': 'Wait for monitoring to finish before marking this report as audited.',
+        'Results are published. Audits cannot be changed.': 'Results are published. Audits cannot be changed.',
+        'The assessment or audits changed. Refresh the candidate list before publishing.': 'The assessment or audits changed. Refresh the candidate list before publishing.',
+        'Every candidate must be audited before publication.': 'Audit every candidate before publishing results.',
+        'Choose a valid From and To date range.': 'Choose a valid From and To date range.',
+        'Choose dates within the supported date range.': 'Choose dates within the supported date range.',
+      };
+      const text = safe[detail] || (response.status === 401 ? 'Your session ended. Sign in again.' : response.status === 403 ? 'Your account cannot perform this action.'
+        : response.status === 409 ? 'This report or its audit status changed. Refresh before continuing.'
+          : response.status === 422 ? 'Check the entered information and try again.'
+            : options.method === 'POST' ? 'Could not confirm the save. Try again.' : 'Could not load this information. Try again.');
+      throw Object.assign(Error(text), { status: response.status });
+    }
     return result;
   }
   function facts(target, values) {
@@ -41,11 +76,13 @@
   function clearPlayers() { fullPlayer?.destroy(); evidencePlayer?.destroy(); fullPlayer = evidencePlayer = null; el("full-player-host").hidden = true; el("recording-toggle").textContent = "Open recording"; }
   function view(name) {
     for (const item of ["exam", "candidate", "case"]) el(`${item}-view`).hidden = item !== name;
+    if (name !== 'case') caseFeedback.dispose();
     message(); el(`${name}-view`).scrollIntoView({ block: "start", behavior: "instant" });
   }
   function emptyRows(target, text, columns) { const row = node("tr"), td = node("td", "table-empty", text); td.colSpan = columns; row.append(td); target.replaceChildren(row); }
   async function loadPublicationHistory() {
     const serial = ++historySerial;
+    const scope = historyFeedback = feedback.scope('auditor-history');
     emptyRows(el("publication-history-rows"), "Loading publications…", 6);
     el("history-previous").disabled = true; el("history-next").disabled = true;
     message();
@@ -58,7 +95,7 @@
         params.set("date_from", from); params.set("date_to", to);
       }
       const result = await api(`/api/auditor/publications?${params}`);
-      if (serial !== historySerial) return;
+      if (serial !== historySerial || !scope.active) return;
       el("publication-history-rows").replaceChildren();
       for (const item of result.items) {
         const row = node("tr"), exam = node("td"), title = node("strong"), code = node("td");
@@ -73,17 +110,18 @@
       el("history-count").textContent = `${result.total} published ${result.total === 1 ? "exam" : "exams"} · Page ${historyPage}`;
       el("history-previous").disabled = historyPage <= 1; el("history-next").disabled = historyPage * result.page_size >= result.total;
     } catch (error) {
-      if (serial === historySerial) { emptyRows(el("publication-history-rows"), "Publication history unavailable.", 6); el("history-count").textContent = ""; message(error.message); }
+      if (serial === historySerial && scope.active) { el("publication-history-rows").replaceChildren(); el("history-count").textContent = ""; notice(scope, "history-message", error.message, "error", { label: "Retry", onClick: loadPublicationHistory }); }
     }
   }
   async function openPublishedResults(id) {
     const serial = ++historyDetailSerial;
+    const scope = historyDetailFeedback = feedback.scope('auditor-history-detail');
     pausePlayers(); message();
     el("history-list-view").hidden = true; el("history-detail-view").hidden = false;
     el("history-detail-content").hidden = true; el("history-detail-title").textContent = "Loading published results…"; el("history-detail-code").textContent = "";
     el("history-detail-view").scrollIntoView({ block: "start", behavior: "instant" });
     try {
-      const result = await api(`/api/auditor/publications/${id}`); if (serial !== historyDetailSerial) return;
+      const result = await api(`/api/auditor/publications/${id}`); if (serial !== historyDetailSerial || !scope.active) return;
       const p = result.publication;
       el("history-detail-title").textContent = p.title; el("history-detail-code").textContent = `Exam code: ${p.internal_reference || "Not set"}`;
       facts(el("history-detail-facts"), [["Published by", p.publisher_username], ["Published on", date(p.published_at)], ["Candidates", String(p.candidate_count)]]);
@@ -105,14 +143,15 @@
       }
       if (!result.candidates.length) emptyRows(el("history-result-rows"), "No published candidate results.", 6);
       el("history-detail-content").hidden = false;
-    } catch (error) { if (serial === historyDetailSerial) { el("history-detail-title").textContent = "Published results unavailable"; message(error.message); } }
+    } catch (error) { if (serial === historyDetailSerial && scope.active) { el("history-detail-title").textContent = "Published results unavailable"; notice(scope, "history-detail-message", error.message, "error", { label: "Retry", onClick: () => openPublishedResults(id) }); } }
   }
   async function loadExams() {
     const serial = ++examSerial;
+    const scope = examFeedback = feedback.scope('auditor-exams');
     const params = new URLSearchParams({ page, search: el("exam-search").value.trim(), audit: el("exam-audit").value });
     emptyRows(el("exam-rows"), "Loading assessments…", 6); message();
     try {
-      const result = await api(`/api/auditor/assessments?${params}`); if (serial !== examSerial) return;
+      const result = await api(`/api/auditor/assessments?${params}`); if (serial !== examSerial || !scope.active) return;
       exams = result.items; el("exam-rows").replaceChildren();
       for (const exam of exams) {
         const row = node("tr"), name = node("td"), link = button("", () => openExam(exam), "audit-exam-link");
@@ -125,7 +164,7 @@
       if (!exams.length) emptyRows(el("exam-rows"), "No assessments match these filters.", 6);
       el("exam-count").textContent = `${result.total} assessments · Page ${page}`;
       el("exam-previous").disabled = page <= 1; el("exam-next").disabled = page * result.page_size >= result.total;
-    } catch (error) { if (serial === examSerial) { emptyRows(el("exam-rows"), "Assessments unavailable.", 6); message(error.message); } }
+    } catch (error) { if (serial === examSerial && scope.active) { el("exam-rows").replaceChildren(); notice(scope, "exam-message", error.message, "error", { label: "Retry", onClick: loadExams }); } }
   }
   async function openExam(exam, fromHistory = false) {
     historyReportId = null;
@@ -137,11 +176,13 @@
     view("candidate"); await loadCandidates();
   }
   async function loadCandidates() {
+    if (publishing || publicationDialog?.element.open) return;
     const serial = ++candidateSerial, id = selectedExam.id;
+    const scope = candidateFeedback = feedback.scope('auditor-candidates');
     publication = null; el("publication-panel").hidden = true;
     emptyRows(el("candidate-rows"), "Loading candidates…", 5); message();
-    try { const result = await api(`/api/auditor/assessments/${id}/candidates`); if (serial !== candidateSerial || id !== selectedExam?.id) return; cards = result.candidates; publication = result.publication; renderCandidates(); renderPublication(); }
-    catch (error) { if (serial === candidateSerial) { emptyRows(el("candidate-rows"), "Candidates unavailable.", 5); message(error.message); } }
+    try { const result = await api(`/api/auditor/assessments/${id}/candidates`); if (serial !== candidateSerial || id !== selectedExam?.id || !scope.active) return; cards = result.candidates; publication = result.publication; renderCandidates(); renderPublication(); }
+    catch (error) { if (serial === candidateSerial && id === selectedExam?.id && scope.active) { el("candidate-rows").replaceChildren(); notice(scope, "candidate-message", error.message, "error", { label: "Retry", onClick: loadCandidates }); } }
   }
   function renderPublication() {
     if (!publication) return;
@@ -150,7 +191,7 @@
     el("publication-status").textContent = published ? "Published" : "Not published";
     el("publication-status").className = published ? "audit-done" : "audit-pending";
     el("publication-count").textContent = `${publication.audited_count} of ${publication.candidate_count} candidates audited`;
-    el("publication-blocker").textContent = publication.blocked_reason || ""; el("publication-blocker").hidden = published || !publication.blocked_reason;
+    notice(candidateFeedback, 'publication-blocker', published ? '' : publication.blocked_reason || '', 'warning');
     el("publish-open").hidden = published; el("publish-open").disabled = !publication.can_publish || publishing;
     el("publish-open").textContent = "Approve and publish results";
     el("publication-record").hidden = !latest;
@@ -171,6 +212,7 @@
     if (!matching.length) emptyRows(el("candidate-rows"), "No candidates match these filters.", 5);
   }
   async function openCase(invitationId, reload = false) {
+    const scope = caseFeedback = feedback.scope('auditor-case');
     const serial = ++caseSerial; selectedInvitation = invitationId; clearPlayers(); data = null;
     view("case"); el("audit-action-bar").hidden = true;
     el("back-candidates").textContent = historyReportId ? "Back to published results" : "Back to candidates";
@@ -178,15 +220,15 @@
     document.querySelector(".audit-tabs").hidden = true;
     for (const pane of document.querySelectorAll("[data-case-pane]")) pane.hidden = true;
     try {
-      const result = await api(`${base()}/report`); if (serial !== caseSerial) return; data = result;
+      const result = await api(`${base()}/report`); if (serial !== caseSerial || !scope.active) return; data = result;
       renderCase(); document.querySelector(".audit-tabs").hidden = false; el("audit-action-bar").hidden = false;
       selectSubtab("case", reload ? document.querySelector("[data-case-tab][aria-selected=true]")?.dataset.caseTab || "results" : "results");
       selectSubtab("integrity", "recordings");
-    } catch (error) { if (serial === caseSerial) { el("case-name").textContent = "Report unavailable"; message(error.message); } }
+    } catch (error) { if (serial === caseSerial && scope.active) { el("case-name").textContent = "Report unavailable"; notice(scope, "case-message", error.message, "error", { label: "Reload report", onClick: refreshCase }); } }
   }
   function renderCase() {
     const r = data.review, s = r.scores;
-    window.renderConnectivityCase(el("audit-connectivity-case"), r, { readOnly: true });
+    window.renderConnectivityCase(el("audit-connectivity-case"), r, { readOnly: true, feedback: caseFeedback });
     el("case-exam-title").textContent = r.title; el("case-name").textContent = r.name; el("case-email").textContent = r.email;
     const written = s.questions.filter(q => q.type === "written"), earned = Math.round(written.reduce((n, q) => n + Number(q.earned || 0), 0) * 100) / 100;
     const final = r.outcome === "disqualified" ? "Disqualified" : r.decision ? score(r.decision.score, s.possible) : "Awaiting reviewer decision";
@@ -196,7 +238,7 @@
     renderAnswers(); renderReviewer(); renderCoverage(); renderIdentity(); renderFlags(); renderAudit();
     const available = data.recording.parts.some(p => p.total_bytes > 0);
     el("recording-toggle").hidden = !available;
-    el("recording-state").textContent = !available ? "Recording unavailable." : data.recording.status === "complete" ? "" : "Recording incomplete.";
+    notice(caseFeedback, 'recording-state', !available ? 'Recording unavailable.' : data.recording.status === 'complete' ? '' : 'Recording incomplete.', 'warning');
   }
   function renderAnswers() {
     el("audit-answers").replaceChildren();
@@ -239,14 +281,15 @@
     const missing = !id?.card_available && !id?.selfie_available && !data.review.reference_available
       ? "Verification images unavailable or expired." : !id?.card_available ? "ID card image unavailable or expired." : !id?.selfie_available && !data.review.reference_available ? "Reference photo unavailable or expired." : "";
     let status = el("identity-image-status");
-    if (!status) { status = node("p", "review-muted"); status.id = "identity-image-status"; el("identity-facts").after(status); }
-    status.textContent = missing; status.hidden = !missing;
+    if (!status) { status = node("div", "editor-feedback-host"); status.id = "identity-image-status"; el("identity-facts").after(status); }
+    notice(caseFeedback, 'identity-image-status', missing, 'warning');
   }
   function eventOffset(event) { const part = (data.monitoring.parts || []).find(p => p.id === event.part_id); return event.start_ms + (part ? Date.parse(part.started_at) - Date.parse(data.review.started_at) : 0); }
   function renderFinding(finding) {
     const block = node("div", "audit-finding"); block.append(node("h4", "", "Recorded finding"), pill(findings[finding.assessment] || finding.assessment, finding.assessment === "dismissed", finding.assessment === "supports_violation"), node("span", "detail-field-label", "Reason for the finding"), node("p", "audit-preserve", finding.reason), node("p", "review-muted", `Recorded by ${finding.reviewer} · ${date(finding.created_at)}`)); return block;
   }
   function renderFlags() {
+    for (const item of el("audit-flags").querySelectorAll("[data-message-id]")) caseFeedback.clear(item.dataset.messageId);
     el("audit-flags").replaceChildren();
     for (const event of [...data.monitoring.events].sort((a,b) => eventOffset(a) - eventOffset(b))) {
       const article = node("article", "card section-card review-event"), head = node("div", "review-event-top");
@@ -259,9 +302,9 @@
         const play = button("Play evidence", () => {
           evidencePlayer?.destroy(); fullPlayer?.pause();
           const host = node("div"); play.after(host);
-          evidencePlayer = new AuditPlayer(host, data.recording.parts, base(), { event, beforePlay: () => fullPlayer?.pause(), onClose: () => { host.remove(); evidencePlayer = null; } });
+          evidencePlayer = new AuditPlayer(host, data.recording.parts, base(), { feedback: caseFeedback, event, beforePlay: () => fullPlayer?.pause(), onClose: () => { host.remove(); evidencePlayer = null; } });
         }, "secondary-button audit-play-evidence"); article.append(play);
-      } else article.append(node("p", "review-muted", "Evidence recording unavailable."));
+      } else { const warning = node("div", "editor-feedback-host"); article.append(warning); caseFeedback.show({ id: `missing-evidence-${event.event_key}`, target: warning, text: "Evidence recording unavailable.", tone: "warning" }); }
       el("audit-flags").append(article);
     }
     if (!data.monitoring.events.length) el("audit-flags").append(node("p", "review-empty", "No flags or events recorded."));
@@ -269,7 +312,8 @@
   function renderAudit() {
     const a = data.audit, entry = a.current || a.history[0];
     el("audit-status").textContent = auditStatus(a); el("audit-status").className = a.current ? "audit-done" : "audit-pending";
-    el("audit-attribution").textContent = [entry ? `${a.current ? "Audited" : "Previously audited"} by ${entry.auditor_username} · ${date(entry.created_at)}` : "", !a.current ? a.blocked_reason : ""].filter(Boolean).join(" · ");
+    el("audit-attribution").textContent = [entry ? `${a.current ? "Audited" : "Previously audited"} by ${entry.auditor_username} · ${date(entry.created_at)}` : ""].filter(Boolean).join(" · ");
+    notice(caseFeedback, 'audit-blocker', !a.current ? a.blocked_reason || '' : '', 'warning');
     el("audit-action-bar").classList.toggle("is-audited", !!a.current);
     el("mark-audited").hidden = !!a.current;
     el("mark-audited").textContent = saving ? "Saving…" : "Mark as audited"; el("mark-audited").disabled = saving || !!a.current || !a.can_mark;
@@ -287,14 +331,25 @@
     });
   }
   function selectMainTab(name, loadHistory = true) {
+    if (saving || publishing) return;
+    if (name !== 'auditing') {
+      ++examSerial; ++candidateSerial; ++caseSerial;
+      examFeedback.dispose(); candidateFeedback.dispose(); caseFeedback.dispose(); clearPlayers();
+      data = null; selectedInvitation = null; view('exam');
+    }
+    if (name !== 'publications') {
+      ++historySerial; ++historyDetailSerial; clearTimeout(historySearchTimer);
+      historyFeedback.dispose(); historyDetailFeedback.dispose();
+    }
     pausePlayers(); message();
     for (const item of document.querySelectorAll("[data-main-tab]")) { const active = item.dataset.mainTab === name; item.classList.toggle("is-active", active); if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); }
     for (const pane of document.querySelectorAll("[data-main-pane]")) pane.hidden = pane.dataset.mainPane !== name;
     el("page-title").textContent = name === "auditing" ? "Assessment auditing" : name === "overview" ? "Overview" : "Publication history";
-    if (name === "publications" && loadHistory) { ++historyDetailSerial; el("history-detail-view").hidden = true; el("history-list-view").hidden = false; historyPage = 1; loadPublicationHistory(); }
+    if (name === "auditing" && el("exam-view").hidden === false) loadExams();
+    if (name === "publications" && loadHistory) { ++historyDetailSerial; historyDetailFeedback.dispose(); el("history-detail-view").hidden = true; el("history-list-view").hidden = false; historyPage = 1; loadPublicationHistory(); }
   }
   for (const b of document.querySelectorAll("[data-main-tab]")) b.addEventListener("click", () => selectMainTab(b.dataset.mainTab));
-  el("history-back").addEventListener("click", () => { ++historyDetailSerial; el("history-detail-view").hidden = true; el("history-list-view").hidden = false; message(); el("history-list-view").scrollIntoView({block:"start",behavior:"instant"}); });
+  el("history-back").addEventListener("click", () => { ++historyDetailSerial; historyDetailFeedback.dispose(); el("history-detail-view").hidden = true; el("history-list-view").hidden = false; message(); el("history-list-view").scrollIntoView({block:"start",behavior:"instant"}); });
   function applyHistoryFilters() { clearTimeout(historySearchTimer); historyPage = 1; loadPublicationHistory(); }
   el("history-filters").addEventListener("submit", e => { e.preventDefault(); applyHistoryFilters(); });
   el("history-search").addEventListener("input", () => { clearTimeout(historySearchTimer); historySearchTimer = setTimeout(applyHistoryFilters, 250); });
@@ -327,61 +382,92 @@
   el("recording-toggle").addEventListener("click", () => {
     if (!data) return;
     if (!el("full-player-host").hidden) { fullPlayer?.pause(); el("full-player-host").hidden = true; el("recording-toggle").textContent = "Open recording"; return; }
-    if (!fullPlayer) fullPlayer = new AuditPlayer(el("full-player-host"), data.recording.parts, base(), { beforePlay: () => evidencePlayer?.pause() });
+    if (!fullPlayer) fullPlayer = new AuditPlayer(el("full-player-host"), data.recording.parts, base(), { feedback: caseFeedback, beforePlay: () => evidencePlayer?.pause() });
     el("full-player-host").hidden = false; el("recording-toggle").textContent = "Close recording";
   });
   el("identity-toggle").addEventListener("click", () => {
-    const host = el("identity-images");
+    const host = el("identity-images"), scope = caseFeedback;
+    for (const kind of ["card", "selfie"]) scope.clear(`image-${kind}`);
     if (!host.hidden) { host.hidden = true; host.replaceChildren(); el("identity-toggle").textContent = "Open verification images"; return; }
     const identity = data.identity;
     for (const [kind, label, available] of [["card", "ID card", identity?.card_available], ["selfie", "Verified reference photo", identity?.selfie_available || data.review.reference_available]]) {
       const figure = node("figure"); figure.append(node("figcaption", "", label));
-      if (available) { const image = node("img"); image.alt = label; image.src = `${base()}/identity/${kind}`; image.addEventListener("error", () => { image.remove(); figure.append(node("p", "review-muted", "Image unavailable or expired.")); }); figure.prepend(image); }
-      else figure.append(node("p", "review-muted", "Image unavailable or expired.")); host.append(figure);
+      const imageError = () => { if (scope.active && figure.isConnected) scope.show({ id: `image-${kind}`, target: figure, tone: 'error', text: 'Image unavailable or expired. Close the images and open them again.' }); };
+      host.append(figure);
+      if (available) { const image = node("img"); image.alt = label; image.src = `${base()}/identity/${kind}`; image.addEventListener("error", () => { image.remove(); imageError(); }); figure.prepend(image); }
+      else imageError();
     }
     host.hidden = false; el("identity-toggle").textContent = "Close verification images";
   });
-  el("mark-audited").addEventListener("click", async () => {
+  el('mark-audited').addEventListener('click', async () => {
     if (!data || saving || !data.audit.can_mark || data.audit.current) return;
-    saving = true; renderAudit(); const serial = caseSerial;
+    const scope = caseFeedback, serial = caseSerial, url = base();
+    saving = true; renderAudit(); notice(scope, 'audit-save-message', '');
     try {
-      const result = await api(`${base()}/audit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_version: data.audit.version }) });
-      if (serial !== caseSerial) return; data.audit = { ...data.audit, ...result.audit }; message();
-    } catch (error) { if (serial === caseSerial) { message(error.message); if (error.status === 409) data.audit.can_mark = false; } }
-    finally { saving = false; if (serial === caseSerial && data) renderAudit(); }
+      const result = await api(`${url}/audit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_version: data.audit.version }) });
+      if (serial !== caseSerial || !scope.active) return;
+      data.audit = { ...data.audit, ...result.audit };
+      scope.notify({ id: 'audit-saved', text: 'Candidate marked as audited.' });
+    } catch (error) {
+      if (serial !== caseSerial || !scope.active) return;
+      if (error.status === 409) { data.audit.can_mark = false; data.audit.blocked_reason = null; }
+      notice(scope, 'audit-save-message', error.message, 'error', error.status === 409 ? { label: 'Reload report', onClick: refreshCase } : undefined);
+    } finally { saving = false; if (serial === caseSerial && data) renderAudit(); }
   });
   el("sign-out").addEventListener("click", async () => {
     el("sign-out").disabled = true;
     try { await api("/api/auth/logout", { method: "POST" }); location.assign("/"); }
     catch (error) { el("sign-out").disabled = false; message(error.message); }
   });
-  el("publish-open").addEventListener("click", () => {
-    if (!publication?.can_publish || publishing) return;
+  el('publish-open').addEventListener('click', () => {
+    if (!publication?.can_publish || publishing || publicationDialog) return;
+    const previous = publicationDraft;
     publicationDraft = { assessmentId: selectedExam.id, expected_version: publication.version };
-    el("publication-form").reset(); el("publication-error").hidden = true;
-    el("publication-confirm-exam").textContent = selectedExam.title;
-    el("publication-confirm-count").textContent = `Publish results for all ${publication.candidate_count} candidates?`;
-    el("publish-confirm").disabled = false; el("publish-confirm").textContent = "Confirm and publish";
-    el("publication-dialog").showModal();
+    publicationFeedback = feedback.scope('auditor-publication'); publicationStale = false;
+    if (!previous || previous.assessmentId !== selectedExam.id) publicationForm.reset();
+    const scope = publicationFeedback, draft = publicationDraft, outcomeScope = candidateFeedback;
+    const dialog = scope.confirm({ id: 'publish-results', dialogId: 'publication-dialog', confirmButtonId: 'publish-confirm',
+      cancelButtonId: 'publish-cancel', errorId: 'publication-error', title: 'Approve and publish results?',
+      text: `${selectedExam.title}: publish results for all ${publication.candidate_count} candidates. Published results are final.`,
+      content: publicationForm, confirmLabel: 'Confirm and publish', busyLabel: 'Publishing...',
+      onConfirm: async () => {
+        if (publicationStale || publishing) return false;
+        const input = el('publication-note');
+        const valid = input => input.value.trim().length > 0 && input.value.length <= 5000;
+        if (!valid(input)) { scope.fieldError({ id: 'publication-remark', input, text: 'Enter a publication remark.', validate: valid }); input.focus(); return false; }
+        scope.clear('publication-remark'); publishing = true;
+        try {
+          const result = await api(`/api/auditor/assessments/${draft.assessmentId}/publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ expected_version: draft.expected_version, confirmed: true, remark: input.value.trim() }) });
+          if (!scope.active) return false;
+          if (!result.publication || result.publication.status !== 'published') throw Error('Could not confirm publication. Try again.');
+          publicationDraft = null;
+          if (selectedExam?.id === draft.assessmentId) publication = result.publication;
+          return true;
+        } catch (error) {
+          publicationStale = error.status === 409;
+          dialog.setError(error.message + (publicationStale ? ' Cancel and refresh the candidates.' : ''));
+          dialog.setConfirmDisabled(publicationStale); return false;
+        } finally { publishing = false; }
+      },
+    });
+    publicationDialog = dialog;
+    dialog.result.then(accepted => {
+      el('publication-form-home').append(publicationForm);
+      if (publicationDialog === dialog) publicationDialog = null;
+      scope.clear('publication-remark');
+      if (selectedExam?.id !== draft.assessmentId) return;
+      if (accepted) {
+        renderPublication();
+        if (outcomeScope.active) outcomeScope.notify({ id: 'results-published', text: 'Results published.' });
+      } else if (publicationStale && scope.active) {
+        notice(candidateFeedback, 'candidate-message', 'The assessment or audits changed. Refresh the candidates before publishing.', 'error', { label: 'Refresh candidates', onClick: loadCandidates });
+        if (publication) publication.can_publish = false;
+        renderPublication();
+      }
+    });
   });
-  el("publication-form").addEventListener("submit", async e => {
-    e.preventDefault(); if (!publicationDraft || publishing || !el("publication-form").reportValidity()) return;
-    const remark = el("publication-note").value.trim();
-    if (!remark) { el("publication-error").textContent = "Enter a publication remark."; el("publication-error").hidden = false; el("publication-note").focus(); return; }
-    publishing = true; el("publish-confirm").disabled = true; el("publish-cancel").disabled = true; el("publish-confirm").textContent = "Publishing…"; el("publication-error").hidden = true;
-    const draft = publicationDraft; let stale = false;
-    try {
-      const result = await api(`/api/auditor/assessments/${draft.assessmentId}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_version: draft.expected_version, confirmed: true, remark }) });
-      el("publication-dialog").close(); publicationDraft = null;
-      if (selectedExam?.id === draft.assessmentId) { publication = result.publication; renderPublication(); }
-    } catch (error) {
-      stale = error.status === 409; el("publication-error").textContent = stale ? `${error.message} Close this dialog and refresh the candidate list.` : error.message; el("publication-error").hidden = false;
-    } finally {
-      publishing = false; el("publish-confirm").disabled = stale; el("publish-cancel").disabled = false; el("publish-confirm").textContent = "Confirm and publish";
-    }
-  });
-  el("publish-cancel").addEventListener("click", () => el("publication-dialog").close());
-  el("publication-dialog").addEventListener("cancel", e => { if (publishing) e.preventDefault(); });
+  publicationForm.addEventListener('submit', event => { event.preventDefault(); el('publish-confirm')?.click(); });
   (async () => {
     try { const user = await api("/api/auth/me"); if (user.role !== "auditor") return location.replace("/"); el("account-name").textContent = user.username; await loadExams(); }
     catch (error) { message(error.message); }

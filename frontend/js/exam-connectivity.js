@@ -4,9 +4,13 @@ window.examRecovery = (() => {
   let localStopped = false, connected = true, storageReady = false, draftWrites = Promise.resolve();
   let storageBlocked = false, latestDraft = null;
   let lossRevision = 0;
+  let announcedConnection = '';
   function label(text, error = false) {
-    const target = document.getElementById("connection-status");
-    target.textContent = text; target.dataset.state = error ? "error" : "saved";
+    if (typeof attemptState !== "undefined" && ["submitted", "interrupted", "disqualified"].includes(attemptState?.state)) return;
+    const key = `${error}:${text.replace(/\d+/g, '#')}`;
+    candidateFeedback.show('connection-status', text, error ? 'error' : 'success',
+      { compact: true, announce: key !== announcedConnection });
+    announcedConnection = key;
   }
   async function prepare() {
     const state = await examRequest("/api/candidate/exam/prepare", "POST");
@@ -22,8 +26,7 @@ window.examRecovery = (() => {
     window.examFlow?.deviceStatusChanged();
   }
   async function readiness() {
-    const target = document.getElementById("network-check-status");
-    target.textContent = "Checking connection and local storage…";
+    candidateFeedback.show("network-check-status", "Checking connection and local storage...", "loading");
     try {
       await window.examStorage.check();
       // A timed round trip to our server and an acknowledged upload, not Wi-Fi state.
@@ -32,11 +35,14 @@ window.examRecovery = (() => {
       try {
         const response = await fetch("/api/candidate/exam/network-check", { method: "PUT", credentials: "same-origin", signal: controller.signal,
           headers: { ...await window.assessbridgeSeb.headers(), "X-Exam-Client": window.examClientId, "Content-Type": "application/octet-stream" }, body: new Uint8Array(131072) });
-        if (!response.ok) throw new Error((await response.json()).detail || "Connection check failed");
+        if (!response.ok) throw new Error("Could not check the exam connection. Reconnect and retry.");
       } finally { clearTimeout(timeout); }
-      target.textContent = "Connection and storage ready";
+      candidateFeedback.show("network-check-status", "Connection and storage ready.", "success");
       return true;
-    } catch (error) { target.textContent = "Connection or storage check failed"; throw error; }
+    } catch {
+      candidateFeedback.show('network-check-status', 'Connection or storage check failed. Reconnect and retry.');
+      throw new Error('Could not confirm the connection and device storage. Reconnect and try again.');
+    }
   }
   function saveDraft(index, answer) {
     const draft = { question_index: index, answer, version: crypto.randomUUID() };
@@ -148,5 +154,5 @@ window.examRecovery = (() => {
   window.addEventListener('online', () => { heartbeat(); });
   return { prepare, readiness, heartbeat, tick, lost, liveCheck, saveDraft, clearDraft, restoreDraft,
     settled: () => draftWrites, online: () => connected, blocked: () => localStopped || storageBlocked,
-    storageReady: () => storageReady };
+    draftAvailable: () => !storageBlocked, storageReady: () => storageReady };
 })();

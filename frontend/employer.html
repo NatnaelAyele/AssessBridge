@@ -5,11 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0d3a78" />
     <title>Employer workspace | AssessBridge</title>
-    <link rel="stylesheet" href="css/employer.css?v=20261106-connectivity" />
-    <script src="js/employer.js?v=20261107-identity-options" defer></script>
-    <script src="js/connectivity-case.js?v=20261106-review2" defer></script>
-    <script src="js/employer-review.js?v=20261106-interruptions" defer></script>
-    <link rel="stylesheet" href="css/employer-review.css?v=20261106-interruptions" />
+    <link rel="stylesheet" href="css/employer.css?v=20261113-lifecycle" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/employer.js?v=20261113-lifecycle" defer></script>
+    <script src="js/connectivity-case.js?v=20261113-audit" defer></script>
+    <script src="js/employer-review.js?v=20261113-audit" defer></script>
+    <link rel="stylesheet" href="css/employer-review.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
   </head>
   <body>
     <div class="app-shell">
@@ -60,7 +62,8 @@
             <button class="primary-button" id="new-assessment" type="button">+ New assessment</button>
           </div>
 
-          <div id="session-message" class="notice notice-error" role="status" hidden></div>
+          <div id="employer-notifications"></div>
+          <div id="session-message" class="editor-feedback-host"></div>
 
           <section class="tab-panel" data-panel="overview" aria-label="Overview">
             <div class="welcome-card">
@@ -114,7 +117,7 @@
                     <div class="form-field field-wide"><label for="assessment-title">Assessment title</label><input id="assessment-title" type="text" maxlength="120" placeholder="e.g. Graduate analyst assessment" /></div>
                     <div class="form-field"><label for="assessment-duration">Duration (minutes)</label><input id="assessment-duration" type="number" min="1" max="480" placeholder="e.g. 90" /></div>
                     <div class="form-field"><label for="assessment-reference">Internal reference <span class="optional">Optional</span></label><input id="assessment-reference" type="text" maxlength="60" placeholder="e.g. GA-2026-01" /></div>
-                    <div class="form-field field-wide"><label for="assessment-description">Instructions or description <span class="optional">Optional</span></label><textarea id="assessment-description" rows="4" placeholder="What should candidates know about this assessment?"></textarea></div>
+                    <div class="form-field field-wide"><label for="assessment-description">Instructions or description <span class="optional">Optional</span></label><textarea id="assessment-description" maxlength="10000" rows="4" placeholder="What should candidates know about this assessment?"></textarea></div>
                   </div>
                 </section>
 
@@ -123,8 +126,8 @@
                   <p class="section-copy">Add questions and their answer keys. They are saved when invitations are sent.</p>
                   <div class="soft-card">
                     <div class="form-field"><label for="question-type">Question type</label><select id="question-type"><option value="written">Written answer</option><option value="multiple_choice">Multiple choice</option></select></div>
-                    <div class="form-field"><label for="question-prompt">Question prompt</label><textarea id="question-prompt" rows="3" placeholder="Enter a question or task"></textarea></div>
-                    <div id="written-answer-fields" class="form-field"><label for="question-key">Answer key or expected answer</label><textarea id="question-key" rows="2" placeholder="Enter the answer or marking reference"></textarea></div>
+                    <div class="form-field"><label for="question-prompt">Question prompt</label><textarea id="question-prompt" maxlength="5000" rows="3" placeholder="Enter a question or task"></textarea></div>
+                    <div id="written-answer-fields" class="form-field"><label for="question-key">Answer key or expected answer</label><textarea id="question-key" maxlength="5000" rows="2" placeholder="Enter the answer or marking reference"></textarea></div>
                     <fieldset id="multiple-choice-fields" class="mcq-fields" hidden>
                       <legend>Answer options</legend>
                       <p>Enter at least two different options and mark one as correct.</p>
@@ -134,7 +137,7 @@
                       <div class="mcq-option-row"><div class="form-field"><label for="mcq-option-d">Option D <span class="optional">Optional</span></label><input id="mcq-option-d" class="mcq-option" type="text" maxlength="300" placeholder="Enter option D" /></div><label class="correct-option"><input type="radio" name="correct-option" value="3" /> Correct answer</label></div>
                     </fieldset>
                     <button id="add-question" class="secondary-button" type="button">+ Add question to preview</button>
-                    <p id="question-message" class="inline-message" role="status" hidden></p>
+                    <div id="question-message" class="editor-feedback-host"></div>
                   </div>
                   <div class="list-heading"><h3>Questions in this preview</h3><span id="question-count">0 questions</span></div>
                   <ol id="question-list" class="question-list"></ol>
@@ -162,7 +165,7 @@
                   <h2 id="roster-title">Candidate roster</h2>
                   <p class="section-copy">Enter each candidate's name and email. A new row appears when both fields are complete.</p>
                   <div class="table-wrap roster-wrap"><table class="roster-table"><caption class="sr-only">Candidate names and invitation email addresses</caption><thead><tr><th scope="col">Name</th><th scope="col">Email</th></tr></thead><tbody id="roster-rows"></tbody></table></div>
-                  <p id="roster-status" class="roster-status" role="status" aria-live="polite" hidden></p>
+                  <div id="roster-status" class="editor-feedback-host"></div>
                 </section>
 
                 <section class="step-panel" data-step-panel="schedule" aria-labelledby="schedule-title" hidden>
@@ -172,7 +175,7 @@
                     <div class="form-field"><label for="schedule-start">Window opens</label><input id="schedule-start" type="datetime-local" /></div>
                     <div class="form-field"><label for="schedule-end">Window closes</label><input id="schedule-end" type="datetime-local" /></div>
                   </div>
-                  <p id="schedule-status" class="feedback-message" role="status" aria-live="polite" hidden></p>
+                  <div id="schedule-status" class="editor-feedback-host"></div>
                 </section>
 
                 <section class="step-panel" data-step-panel="final" aria-labelledby="final-title" hidden>
@@ -188,9 +191,9 @@
                   </dl>
                   <div class="review-preview-grid"><div class="soft-card"><h3>Questions</h3><ol id="summary-question-list" class="review-preview-list"></ol></div><div class="soft-card"><h3>Invited candidates</h3><ul id="summary-candidate-list" class="review-preview-list"></ul></div></div>
                   <div class="soft-card selected-requirements-preview"><h3>Instructions and selected requirements</h3><p id="summary-description"></p><p id="summary-rules-text"></p><p id="summary-identity-text"></p></div>
-                  <p id="review-readiness" class="feedback-message" role="status" aria-live="polite" hidden></p>
+                  <div id="review-readiness" class="editor-feedback-host"></div>
                   <div class="soft-card final-send-card"><div><strong>Confirm and send</strong><p>Save this assessment and email a calendar invitation with exam-specific credentials to each candidate.</p></div><button id="send-invitations" class="primary-button" type="button">Confirm and send invitations</button></div>
-                  <p id="invite-status" class="feedback-message" role="status" aria-live="polite" hidden></p>
+                  <div id="invite-status" class="editor-feedback-host"></div>
                 </section>
 
                 <div class="editor-actions"><button id="previous-step" class="secondary-button" type="button" disabled>← Previous</button><button id="next-step" class="primary-button" type="button">Continue <span aria-hidden="true">→</span></button></div>
@@ -208,12 +211,13 @@
                 <div class="assessment-filter-range"><span>Questions</span><div><label><span class="sr-only">Minimum questions</span><input id="assessment-questions-min" type="number" min="0" max="200" step="1" placeholder="Min" /></label><span aria-hidden="true">to</span><label><span class="sr-only">Maximum questions</span><input id="assessment-questions-max" type="number" min="0" max="200" step="1" placeholder="Max" /></label></div></div>
                 <button id="assessment-clear-filters" class="secondary-button" type="button">Clear</button>
               </div>
-              <p id="assessment-filter-error" class="feedback-message" data-tone="error" role="alert" hidden></p>
+              <div id="assessment-filter-error" class="editor-feedback-host"></div>
               <div class="assessment-list-head" aria-hidden="true"><span>Exam</span><span>Exam code</span><span>Window</span><span>Invited</span></div>
               <div id="assessment-list" class="assessment-list"></div>
-              <p id="assessment-list-message" class="roster-status" role="status"></p>
+              <div id="assessment-list-message" class="editor-feedback-host"></div>
               <div class="assessment-pagination"><button id="assessments-previous" class="secondary-button" type="button">Previous</button><span id="assessment-page">Page 1</span><button id="assessments-next" class="secondary-button" type="button">Next</button></div>
             </div>
+            <div id="assessment-detail-message" class="editor-feedback-host"></div>
             <div id="selected-assessment" hidden>
             <div class="detail-header card"><p class="eyebrow">ASSESSMENT DETAIL</p><div class="detail-header-top"><div><span class="detail-field-label">Exam title</span><h2 id="detail-title">Untitled assessment</h2></div><div class="detail-code"><span class="detail-field-label">Exam code</span><strong id="detail-code">—</strong></div></div><div class="detail-description"><span class="detail-field-label">Instructions</span><p id="detail-description">No instructions provided.</p><span class="detail-field-label">Identity check</span><p id="detail-identity"></p></div></div>
             <div class="detail-grid">
@@ -238,7 +242,8 @@
                   <div class="assessment-filter-range"><span>Questions</span><div><label><span class="sr-only">Minimum questions</span><input id="review-exam-questions-min" type="number" min="0" max="200" step="1" placeholder="Min" /></label><span aria-hidden="true">to</span><label><span class="sr-only">Maximum questions</span><input id="review-exam-questions-max" type="number" min="0" max="200" step="1" placeholder="Max" /></label></div></div>
                   <button id="review-exam-clear" class="secondary-button" type="button">Clear</button>
                 </div>
-                <p id="review-exam-error" class="feedback-message" data-tone="error" role="alert" hidden></p>
+                <div id="review-exam-error" class="editor-feedback-host"></div>
+                <div id="review-exam-load-message" class="editor-feedback-host"></div>
                 <div class="assessment-list-head" aria-hidden="true"><span>Exam</span><span>Exam code</span><span>Window</span><span>Invited</span></div>
                 <div id="review-exam-list" class="assessment-list"></div>
               </div>
@@ -251,7 +256,7 @@
                 <label>Attempt state<select id="review-attempt-filter"><option value="all">All attempts</option><option value="submitted">Submitted</option><option value="interrupted">Interrupted</option><option value="disqualified">Disqualified</option><option value="in_progress">In progress</option><option value="not_started">Not started</option></select></label>
                 <button id="review-refresh-cards" class="secondary-button" type="button">Refresh</button>
               </div>
-              <p id="review-queue-message" class="feedback-message" role="status" hidden></p>
+              <div id="review-queue-message" class="editor-feedback-host"></div>
               <p id="review-card-count" class="review-muted"></p>
               <div id="review-candidate-cards" class="review-candidate-grid"></div>
             </div>
@@ -261,8 +266,8 @@
                 <div><button id="review-back" class="text-button" type="button">Back to candidates</button><div class="review-session-identities"><div><span class="detail-field-label">Exam</span><strong id="review-assessment-title"></strong></div><div><span class="detail-field-label">Candidate</span><h2 id="review-candidate-name"></h2><p id="review-candidate-email"></p></div></div><div id="review-session-badges" class="review-badges"></div></div>
                 <button id="review-reload" class="secondary-button" type="button">Reload report</button>
               </div>
-              <p id="review-session-message" class="feedback-message" role="status" hidden></p>
-              <p id="review-publication-lock" class="review-muted" hidden>Results published. This assessment is read only.</p>
+              <div id="review-session-message" class="editor-feedback-host"></div>
+              <div id="review-publication-lock" class="editor-feedback-host"></div>
               <div class="review-layout">
                 <div class="review-content">
                   <div class="review-tabs" role="tablist" aria-label="Candidate report">
@@ -286,8 +291,9 @@
                     <div class="card section-card review-evidence">
                       <h3>Session recording</h3>
                       <div class="review-evidence-actions"><button id="review-recording-toggle" class="secondary-button" type="button">Open recording</button><button id="review-reference-button" class="secondary-button" type="button" hidden>Open reference photo</button></div>
-                      <p id="review-recording-message" class="review-muted" role="status" hidden></p>
-                      <div id="review-recording-wrap" class="review-full-player" tabindex="0" aria-label="Full session recording player" hidden><video id="review-video" playsinline preload="metadata"></video><div id="review-recording-controls"></div></div>
+                      <div id="review-recording-message" class="editor-feedback-host"></div>
+                      <div id="review-recording-wrap" class="review-full-player" tabindex="0" aria-label="Full session recording player" hidden><video id="review-video" playsinline preload="metadata"></video><div id="review-recording-controls"></div><div id="review-playback-message" class="review-player-feedback"></div></div>
+                      <div id="review-reference-message" class="editor-feedback-host"></div>
                       <div id="review-reference-wrap" hidden><img id="review-reference-photo" alt="Verified pre-exam reference photo" hidden /></div>
                     </div>
                     <div class="review-event-heading"><h3>Observations</h3><label>Show<select id="review-event-filter"><option value="all">All observations</option><option value="unassessed">Not assessed</option><option value="observation">Behavior observations</option><option value="monitoring_quality">Monitoring quality</option></select></label></div>
@@ -301,11 +307,12 @@
                 <aside id="review-decision-panel" class="card review-decision-panel" aria-label="Review decision">
                   <h3>Review decision</h3><p id="review-decision-state"></p>
                   <p id="review-policy-lock" class="review-alert" hidden>This system disqualification is final.</p>
-                  <form id="review-decision-form">
+                  <form id="review-decision-form" novalidate>
                     <label>Disposition<select id="review-action" required><option value="">Choose a decision</option><option value="keep_score">Keep score</option><option value="change_score">Change score</option><option value="disqualify">Disqualify</option></select></label>
                     <label id="review-score-label" hidden>New final score<input id="review-score" type="number" min="0" step="0.01" disabled /></label>
                     <label>Reason<textarea id="review-reason" minlength="5" maxlength="5000" rows="5" required placeholder="Explain the decision and relevant evidence"></textarea></label>
                     <p>Reviewer: <strong id="review-reviewer"></strong></p><p id="review-draft-score" class="review-muted"></p>
+                    <div id="review-decision-message" class="editor-feedback-host"></div>
                     <button id="review-submit" class="primary-button" type="submit">Confirm decision</button>
                   </form>
                 </aside>
@@ -316,7 +323,7 @@
             <div id="results-list">
               <div class="card section-card results-card"><div class="section-card-head"><div><h2>Results</h2><span id="results-count" class="review-muted"></span></div><button id="results-refresh" class="secondary-button" type="button">Refresh</button></div>
                 <label class="results-exam-label">Exam<select id="results-assessment"><option value="">Loading assessments...</option></select></label>
-                <p id="results-message" class="feedback-message" role="status" hidden></p>
+                <div id="results-message" class="editor-feedback-host"></div>
                 <div class="table-wrap results-table-wrap"><table class="results-table"><thead><tr><th>Candidate</th><th>Exam status</th><th>MCQ score</th><th>Final result</th><th><span class="sr-only">Case report</span></th></tr></thead><tbody id="review-results-table"></tbody></table></div>
               </div>
             </div>
@@ -325,15 +332,5 @@
         </main>
       </div>
     </div>
-    <dialog id="send-confirmation" class="confirmation-dialog" aria-labelledby="send-confirmation-title" aria-describedby="send-confirmation-message">
-      <span class="confirmation-icon" aria-hidden="true">✓</span>
-      <h2 id="send-confirmation-title">Assessment saved and invitations sent</h2>
-      <p id="send-confirmation-message"></p>
-      <div class="confirmation-actions"><button id="view-sent-assessment" class="primary-button" type="button">View assessment detail</button><button id="close-send-confirmation" class="secondary-button" type="button">Close</button></div>
-    </dialog>
-    <dialog id="review-confirm-dialog" class="confirmation-dialog" aria-labelledby="review-confirm-title">
-      <h2 id="review-confirm-title">Confirm review decision</h2><div id="review-confirm-summary"></div><p id="review-confirm-error" class="feedback-message" role="alert" hidden></p>
-      <div class="confirmation-actions"><button id="review-confirm-save" class="primary-button" type="button">Save decision</button><button id="review-confirm-cancel" class="secondary-button" type="button">Cancel</button></div>
-    </dialog>
   </body>
 </html>

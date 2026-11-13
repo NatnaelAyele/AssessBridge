@@ -4,18 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Verify email | AssessBridge</title>
-    <link rel="stylesheet" href="/css/candidate.css" />
-    <link rel="stylesheet" href="/css/exam-entry.css" />
-    <script src="/js/verify-email.js" defer></script>
+    <link rel="stylesheet" href="/css/candidate.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/exam-entry.css?v=20261112-feedback" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/account-feedback.js?v=20261112" defer></script>
+    <script src="/js/verify-email.js?v=20261112-feedback" defer></script>
   </head>
   <body>
     <main class="entry-shell">
       <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span><span>AssessBridge</span></a>
       <div class="entry-heading"><p class="eyebrow">CANDIDATE ACCOUNT</p><h1>Email verification</h1></div>
+      <div id="account-notifications"></div>
       <section class="entry-card">
-        <p id="verification-message" role="status" aria-live="polite">Checking your verification link…</p>
-        <a id="continue-link" class="primary-button" href="/" hidden>Sign in to dashboard</a>
-        <a id="retry-link" href="/register" hidden>Register or request another verification link</a>
+        <div id="verification-message"></div>
       </section>
     </main>
   </body>

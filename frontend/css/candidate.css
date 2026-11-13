@@ -33,7 +33,6 @@ h2 { margin: 0 0 7px; font-size: 25px; letter-spacing: -.035em; }
 .primary-button:hover { background: #084887; }
 .primary-button:disabled { opacity: .65; cursor: wait; }
 .secondary-button { border: 1px solid #bdd2eb; background: #fff; color: #0b58ad; }
-.feedback { margin: 17px 0 0; padding: 12px 14px; border: 1px solid #edb9c1; border-radius: 8px; background: #fff1f3; color: #a21d38; font-size: 13px; line-height: 1.5; }
 .exam-confirmation h3 { margin: 16px 0 25px; font-size: 27px; }
 .verified { display: inline-block; padding: 7px 11px; border-radius: 100px; background: #e8f7ee; color: #176342; font-size: 12px; font-weight: 800; }
 .exam-confirmation dl { display: grid; gap: 15px; margin: 0 0 24px; }

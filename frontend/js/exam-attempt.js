@@ -1,3 +1,4 @@
+let submitDialog = null, leaveDialog = null;
 let attemptState = null;
 let dirtyAnswer = false;
 let saveTimer = null;
@@ -9,6 +10,7 @@ let serverAnchor = 0;
 let clientAnchor = 0;
 let timeoutCheckPending = false;
 let nextTimeoutCheck = 0;
+let finalUploadRequest = 0;
 
 async function examRequest(path, method = "GET", body = null, signal = undefined) {
   const sebHeaders = { ...await window.assessbridgeSeb.headers(), "X-Exam-Client": window.examClientId };
@@ -21,12 +23,12 @@ async function examRequest(path, method = "GET", body = null, signal = undefined
     headers: body === null ? sebHeaders : { "Content-Type": "application/json", ...sebHeaders },
     body: body === null ? undefined : JSON.stringify(body),
   });
-  } catch (error) { window.examRecovery?.lost(); throw error; }
+  } catch { window.examRecovery?.lost(); throw new Error("Could not reach AssessBridge. Reconnect and try again."); }
   finally { clearTimeout(timeoutId); }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (response.status >= 500) window.examRecovery?.lost();
-    const error = new Error(typeof payload.detail === "string" ? payload.detail : "Could not connect to the exam. Please try again.");
+    const error = new Error(candidateFeedback.serverError(response, payload, "Could not connect to the exam. Reconnect and try again."));
     error.status = response.status;
     throw error;
   }
@@ -34,13 +36,11 @@ async function examRequest(path, method = "GET", body = null, signal = undefined
 }
 
 function setExamError(message) {
-  byId("exam-error").textContent = message;
-  byId("exam-error").hidden = !message;
+  candidateFeedback.show("exam-error", message);
 }
 
 function setSaveStatus(text, state) {
-  byId("save-status").textContent = text;
-  byId("save-status").dataset.state = state;
+  candidateFeedback.status("save-status", text, state);
 }
 
 function stopCountdown() {
@@ -98,10 +98,13 @@ function showSubmitted(state) {
   if (saveTimer !== null) clearTimeout(saveTimer);
   saveTimer = null;
   stopCountdown();
-  byId('connection-status').hidden = true;
-  if (byId("submit-dialog").open) byId("submit-dialog").close();
-  byId("recording-final-status").textContent = "Saving the final camera and microphone recording…";
+  candidateFeedback.clearExamWarnings();
+  submitDialog?.destroy(); submitDialog = null;
+  leaveDialog?.destroy(); leaveDialog = null;
+  candidateFeedback.show("recording-final-status", "Saving the final recording...", "loading");
   const interrupted = state.state === "interrupted", disqualified = state.state === "disqualified";
+  byId('submitted-panel').dataset.outcome = state.state;
+  byId('submitted-panel').querySelector('.accepted-mark').textContent = interrupted || disqualified ? '!' : '\u2713';
   byId("finished-eyebrow").textContent = interrupted ? "EXAM INTERRUPTED" : disqualified ? "EXAM DISQUALIFIED" : "EXAM SUBMITTED";
   byId("submitted-title").textContent = `${state.title} ${interrupted ? "interrupted" : disqualified ? "disqualified" : "submitted"}`;
   byId("submitted-message").textContent = interrupted ? "The recovery limit was exceeded. Your saved work has been kept for review. This attempt cannot be reopened." : disqualified ? "You exited before submitting. This attempt is disqualified." : state.submission_reason === "timeout"
@@ -114,25 +117,29 @@ function showSubmitted(state) {
 }
 
 function finishSubmittedUpload(state) {
+  const request = ++finalUploadRequest;
+  const current = () => request === finalUploadRequest && attemptState === state;
   byId('retry-final-upload').hidden = true;
   byId('exit-exam').hidden = true;
+  candidateFeedback.show('recording-completeness', '');
   window.assessbridgeRecording.finish(state)
     .then(async (result) => {
+      if (!current()) return;
       await examRequest('/api/candidate/exam/exit-ready');
-      byId("recording-final-status").textContent = result.status === "complete"
-        ? "Recording saved." : "The recording is incomplete. The available footage has been kept.";
-      byId('recording-final-status').dataset.state = result.status === 'complete' ? 'saved' : 'error';
+      if (!current()) return;
+      candidateFeedback.show('recording-final-status', result.upload_complete ? 'Available recording uploaded.' : 'Recording upload window ended.', result.upload_complete ? 'success' : 'warning');
+      candidateFeedback.show('recording-completeness', result.status === 'complete' ? 'Session recording complete.' : 'Session recording incomplete. The available footage has been kept.', result.status === 'complete' ? 'success' : 'warning');
       byId('recording-upload-progress').value = result.upload_complete ? 100 : byId('recording-upload-progress').value;
       byId('recording-upload-progress').hidden = !result.upload_complete;
       byId('recording-upload-detail').textContent = result.upload_complete ? 'Available recording uploaded. You can exit the exam.' : 'Upload time expired. Missing footage will be shown in the report.';
       byId('exit-exam').hidden = false;
     })
     .catch(() => {
-      byId("recording-final-status").textContent = "Upload confirmation failed. Reconnect and retry.";
-      byId('recording-final-status').dataset.state = 'error';
+      if (!current()) return;
+      candidateFeedback.show("recording-final-status", "Upload confirmation failed. Reconnect and retry.");
       byId('retry-final-upload').hidden = false;
     })
-    .finally(() => { stopMedia(); });
+    .finally(() => { if (current()) stopMedia(); });
 }
 
 async function refreshAttempt() {
@@ -241,6 +248,7 @@ async function ensureSaved() {
     }
     if (!dirtyAnswer) return;
     await window.examRecovery.settled();
+    if (!window.examRecovery.draftAvailable()) { setSaveStatus("Save failed. Device storage is unavailable.", "error"); return; }
     if (!window.examRecovery.online()) { setSaveStatus("Saved on device · Upload pending", "saving"); return; }
     const draft = await window.examStorage.get("draft");
     const questionIndex = attemptState.current_index;
@@ -254,7 +262,7 @@ async function ensureSaved() {
         if (!dirtyAnswer) setSaveStatus("Saved", "saved");
       } catch (error) {
         dirtyAnswer = true;
-        setSaveStatus("Saved on device · Upload pending", "saving");
+        setSaveStatus(window.examRecovery.draftAvailable() ? "Saved on device. Server save pending." : "Save failed. Device storage is unavailable.", window.examRecovery.draftAvailable() ? "saving" : "error");
         if (error.status === 409) await refreshAttempt().catch(() => {});
         throw error;
       } finally {
@@ -340,15 +348,16 @@ function deviceStatusChanged() {
   const ready = canAnswer && window.examRecovery.online() && !attemptState?.recovery_started_at;
   document.querySelectorAll("#answer-area input, #answer-area textarea").forEach(input => { input.disabled = !canAnswer; });
   byId("exam-device-warning").hidden = ready;
-  byId("exam-monitoring-warning").textContent = !devicesReady
+  const warning = !devicesReady
     ? "Camera or microphone disconnected. Reconnect to continue."
     : !recordingReady ? "Recording is unavailable. Retry recording to continue."
     : window.examRecovery.blocked() ? "Answering is paused. Check the recovery status above."
     : attemptState?.resume_required ? "Complete recovery checks to continue."
     : "Reconnecting. You can edit this answer; navigation resumes when connected.";
+  candidateFeedback.show("exam-monitoring-warning", ready ? "" : warning, "warning");
   byId("reconnect-devices").hidden = devicesReady;
   byId("retry-recording").hidden = !devicesReady || recordingReady;
-  if (!ready && byId("submit-dialog").open) byId("submit-dialog").close();
+
   if (attemptState?.state === "active") {
     byId("previous-question").disabled = !ready || attemptState.current_index === 0;
     byId("next-question").disabled = !ready;
@@ -389,7 +398,7 @@ byId("start-exam").addEventListener("click", async () => {
   const button = byId("start-exam");
   button.disabled = true;
   button.textContent = "Starting exam…";
-  byId("start-error").hidden = true;
+  candidateFeedback.show("start-error", "");
   try {
     await window.examRecovery.readiness();
     window.assessbridgeRecording.begin(window.assessbridgeMedia.stream());
@@ -403,8 +412,7 @@ byId("start-exam").addEventListener("click", async () => {
     if (recordingError) setExamError(recordingError + " Retry recording before continuing.");
   } catch (error) {
     await window.assessbridgeRecording.cancel();
-    byId("start-error").textContent = error.message;
-    byId("start-error").hidden = false;
+    candidateFeedback.show("start-error", error.message);
   } finally {
     button.disabled = false;
     button.textContent = "Start exam →";
@@ -421,8 +429,23 @@ byId("next-question").addEventListener("click", async () => {
   try {
     await ensureSaved();
     if (attemptState?.state !== "active") return;
-    byId("submit-dialog-message").textContent = `You answered ${attemptState.answered_count} of ${attemptState.question_count} questions. You cannot change answers after submitting.`;
-    byId("submit-dialog").showModal();
+    if (submitDialog) return;
+    const dialog = candidateFeedback.confirm({ id: 'submit-exam', dialogId: 'submit-dialog', confirmButtonId: 'confirm-submit', cancelButtonId: 'cancel-submit',
+      title: 'Submit your exam?', text: `You answered ${attemptState.answered_count} of ${attemptState.question_count} questions. You cannot change answers after submitting.`,
+      confirmLabel: 'Submit exam', cancelLabel: 'Keep working', busyLabel: 'Submitting...',
+      onConfirm: async () => {
+        try {
+          const state = await examRequest('/api/candidate/exam/submit', 'POST');
+          showSubmitted(state); return true;
+        } catch (error) {
+          await refreshAttempt().catch(() => {});
+          if (attemptState?.state !== 'active') return true;
+          dialog.setError(error.message); return false;
+        }
+      },
+    });
+    submitDialog = dialog;
+    dialog.result.then(() => { if (submitDialog === dialog) submitDialog = null; });
   } catch (error) {
     if (attemptState?.state === "active") setExamError(error.message);
   }
@@ -456,48 +479,34 @@ byId("retry-recording").addEventListener("click", async () => {
     deviceStatusChanged();
   }
 });
-byId("cancel-submit").addEventListener("click", () => byId("submit-dialog").close());
-byId("confirm-submit").addEventListener("click", async () => {
-  const button = byId("confirm-submit");
-  button.disabled = true;
-  button.textContent = "Submitting…";
-  try {
-    showSubmitted(await examRequest("/api/candidate/exam/submit", "POST"));
-  } catch (error) {
-    byId("submit-dialog").close();
-    await refreshAttempt().catch(() => {});
-    if (attemptState?.state === "active") setExamError(error.message);
-  } finally {
-    button.disabled = false;
-    button.textContent = "Confirm submission";
-  }
-});
-
 async function leaveExam() {
-  if (!window.confirm("Leave this exam? Your attempt will be disqualified and you cannot resume it.")) return;
-  const button = byId("report-interruption");
-  button.disabled = true;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
-  try {
-    await examRequest("/api/candidate/exam/leave", "POST", null, controller.signal);
-    await Promise.race([
-      window.assessbridgeRecording.finish().catch(() => {}),
-      new Promise((resolve) => setTimeout(resolve, 1500)),
-    ]);
-  } catch {
-    // The configured SEB quit link must remain available if saving or the API fails.
-  } finally {
-    clearTimeout(timeout);
-    window.location.assign("/seb/exit");
-  }
+  if (leaveDialog || attemptState?.state !== 'active') return;
+  const content = document.createElement('div');
+  const dialog = candidateFeedback.confirm({ id: 'leave-exam', dialogId: 'leave-exam-dialog', title: 'Leave this exam?',
+    text: 'Leaving before submission disqualifies your attempt. You cannot resume it.',
+    confirmLabel: 'Leave exam', cancelLabel: 'Keep working', busyLabel: 'Leaving...', destructive: true, content,
+    onConfirm: async () => {
+      const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 3000);
+      try {
+        await examRequest('/api/candidate/exam/leave', 'POST', null, controller.signal);
+        await Promise.race([window.assessbridgeRecording.finish().catch(() => {}), new Promise(resolve => setTimeout(resolve, 1500))]);
+        window.location.assign('/seb/exit'); return true;
+      } catch {
+        dialog.setError('Could not confirm the exit. Retry, or use Exit SEB to leave now.');
+        if (!content.querySelector('a')) { const exit = document.createElement('a'); exit.href = '/seb/exit'; exit.className = 'ab-feedback__action'; exit.textContent = 'Exit SEB'; content.append(exit); }
+        return false;
+      } finally { clearTimeout(timeout); }
+    },
+  });
+  leaveDialog = dialog;
+  dialog.result.then(() => { if (leaveDialog === dialog) leaveDialog = null; });
 }
 byId("report-interruption").addEventListener("click", leaveExam);
 byId("report-interruption-devices").addEventListener("click", leaveExam);
 
 byId("verify-recovery").addEventListener("click", async () => {
   const button = byId("verify-recovery"); button.disabled = true;
-  byId("recovery-error").hidden = true;
+  candidateFeedback.show("recovery-error", "");
   try {
     await window.examRecovery.liveCheck();
     await window.examRecovery.readiness();
@@ -506,7 +515,7 @@ byId("verify-recovery").addEventListener("click", async () => {
     let state = await examRequest("/api/candidate/exam/recovery/resume", "POST");
     state = await window.examRecovery.restoreDraft(state);
     showExam(state);
-  } catch (error) { byId("recovery-error").textContent = error.message; byId("recovery-error").hidden = false; }
+  } catch (error) { candidateFeedback.show("recovery-error", error.message); }
   finally { button.disabled = false; }
 });
 byId("leave-recovery").addEventListener("click", leaveExam);
@@ -517,7 +526,7 @@ byId('exit-exam').addEventListener('click', async () => {
     const result = await examRequest('/api/candidate/exam/exit-ready');
     window.location.assign(result.exit_url);
   } catch (error) {
-    byId('recording-final-status').textContent = error.message || 'Reconnect to confirm the upload before exiting.';
+    candidateFeedback.show('recording-final-status', 'Reconnect to confirm the upload before exiting.');
   } finally { button.disabled = false; }
 });
 window.examFlow = { bootstrap: bootstrapAttempt, openAfterDevices, stopCountdown, deviceStatusChanged };

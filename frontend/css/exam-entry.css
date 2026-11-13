@@ -12,8 +12,6 @@
 .exam-result .secondary-button { display: inline-flex; align-items: center; margin-top: 12px; text-decoration: none; }
 .entry-footer-link { margin: 24px 0 0; color: #5c6f87; font-size: 14px; }
 .entry-footer-link a, .entry-heading a, .entry-card a:not(.primary-button) { color: #0b58ad; font-weight: 700; }
-.feedback.success, .verification-success { border-color: #b8dfc5; background: #eaf8ef; color: #176342; }
-.verification-error { color: #a21d38; }
 @media (max-width: 600px) { .entry-heading { margin-top: 48px; } }
 .registration-shell { max-width: 700px; }
 .registration-shell .entry-heading { margin: 54px 0 28px; }
@@ -26,6 +24,7 @@
 .resend-panel { margin-top: 22px; padding: 22px; border: 1px solid #dce8f5; border-radius: 10px; background: #f8fbff; }
 .resend-panel h3 { margin: 0 0 20px; font-size: 18px; }
 .resend-panel .field { margin-bottom: 17px; }
-.registration-success h3 { margin: 18px 0 8px; font-size: 21px; }
-.registration-success p { margin: 0 0 22px; color: #5c6f87; font-size: 14px; line-height: 1.6; }
-.registration-success .primary-button { text-decoration: none; }
+
+#register-message:not(:empty), #resend-message:not(:empty), #entry-message:not(:empty) { margin-top: 16px; }
+#exam-status:not(:empty) { margin-bottom: 16px; }
+.entry-card input[aria-invalid="true"] { border-color: #a21d38; }

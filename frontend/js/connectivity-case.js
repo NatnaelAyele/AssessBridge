@@ -39,6 +39,7 @@
     open.type = "button"; open.addEventListener("click", onOpen); host.append(open);
   };
   window.renderConnectivityCase = (host, report, options = {}) => {
+    for (const item of host.querySelectorAll('[data-message-id]')) options.feedback?.clear(item.dataset.messageId);
     host.replaceChildren(); host.hidden = false;
     const data = report.connectivity_report || { incidents: [], confirmed_exits: [], recovery_seconds: 0,
       recording_status: "unavailable", coverage_ready: false };
@@ -75,7 +76,6 @@
           card.append(node("p", "", `Recovery face check: ${result}${similarity} · ${date(check.at)}`));
         }
       } else if (incident.trigger === "session_restart") card.append(node("p", "", "Recovery face check: Not completed"));
-      if (["unavailable", "deleted"].includes(data.recording_status)) card.append(node("p", "review-muted", "Recording unavailable."));
       else if (!data.coverage_ready) card.append(node("p", "review-muted", "Recording coverage pending."));
       else if (incident.gaps.length) {
         for (const gap of incident.gaps) card.append(node("p", "review-muted", `Estimated missing ${gap.stream}: ${elapsed(gap.estimated_seconds)}`));
@@ -97,9 +97,11 @@
         }
       } else card.append(node("p", "review-muted", "No finding recorded."));
       if (options.onSave && !options.readOnly && !report.published && incident.outcome !== "awaiting_recovery") {
-        if (!report.can_decide) card.append(node("p", "review-muted", report.decision_blocked_reason || "Review unavailable."));
+        if (!report.can_decide) { const warning = node("div", "editor-feedback-host"); card.append(warning); options.feedback?.show({ id: `interruption-blocked-${incident.id}`, target: warning, text: report.decision_blocked_reason || "Review unavailable.", tone: "warning" }); }
         else {
           const form = node("form", "connectivity-finding-form");
+          if (!options.feedback) throw new TypeError('Finding forms require a shared feedback scope');
+          form.noValidate = true;
           const choiceLabel = node("label", "", "Finding"), choice = node("select");
           choice.required = true; choice.add(new Option("Choose a finding", ""));
           for (const [value, label] of Object.entries(findings)) choice.add(new Option(label, value));
@@ -112,13 +114,28 @@
           const remember = () => options.onDraft?.(incident.id, { finding: choice.value, reason: reason.value });
           choice.addEventListener("change", remember); reason.addEventListener("input", remember);
           const save = node("button", "secondary-button", "Save finding"); save.type = "submit";
-          const feedback = node("p", "feedback-message"); feedback.hidden = true; feedback.setAttribute("role", "status");
+          const feedback = node('div', 'editor-feedback-host');
           form.append(choiceLabel, reasonLabel, save, feedback);
           form.addEventListener("submit", async event => {
-            event.preventDefault(); if (!form.reportValidity()) return;
-            save.disabled = true; feedback.hidden = true;
+            event.preventDefault(); if (save.disabled) return;
+            if (options.feedback) {
+              let first;
+              for (const [input, valid, text, name] of [[choice, input => !!input.value, 'Choose a finding.', 'choice'],
+                [reason, input => input.value.trim().length >= 5 && input.value.length <= 5000, 'Enter a reason of at least 5 characters.', 'reason']]) {
+                const id = `interruption-${incident.id}-${name}`;
+                if (valid(input)) options.feedback.clear(id);
+                else { options.feedback.fieldError({ id, input, target: input.closest('label'), text, validate: valid }); first ||= input; }
+              }
+              if (first) { first.focus(); return; }
+            }
+            for (const item of feedback.querySelectorAll('[data-message-id]')) options.feedback.clear(item.dataset.messageId);
+            save.disabled = true;
             try { await options.onSave(incident, choice.value, reason.value.trim()); }
-            catch (error) { feedback.textContent = error.message; feedback.dataset.tone = "error"; feedback.hidden = false; save.disabled = false; }
+            catch (error) {
+              if (options.onError) options.onError(error, feedback);
+              else options.feedback.show({ id: `interruption-error-${incident.id}`, target: feedback, tone: 'error', text: 'Could not save this finding. Try again.' });
+              save.disabled = options.canSave ? !options.canSave() : false;
+            }
           });
           card.append(form);
         }

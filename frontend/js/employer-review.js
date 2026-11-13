@@ -19,11 +19,57 @@ window.employerReview = (() => {
   let fullParts = [], fullIndex = 0, mainControls = null, inlinePlayback = null;
   let openedInvitationId = null;
   let sessionReadOnly = false;
-  let loading = 0, cardLoading = 0, pendingDecision = null, busy = false, dirty = false, stale = false;
+  let loading = 0, cardLoading = 0, busy = false, dirty = false, stale = false;
   const findingDrafts = new Map();
   const connectivityDrafts = new Map();
-  const messageTimers = new Map();
+  const pendingWrites = new Map();
+  let activationSerial = 0, reviewVisible = true;
+  function writeBody(kind, fields) {
+    const fingerprint = JSON.stringify(fields);
+    if (pendingWrites.get(kind)?.fingerprint !== fingerprint) pendingWrites.set(kind, { fingerprint, body: JSON.stringify({ ...fields, request_key: crypto.randomUUID() }) });
+    return pendingWrites.get(kind).body;
+  }
+  function notifySaved(scope, text) { if (reviewVisible) scope.notify({ id: 'saved', text }); }
+  function deactivate() {
+    reviewVisible = false; ++activationSerial; ++cardLoading;
+    indexMessages.clearAll(); cardMessages.clearAll(); sessionMessages.clearAll(); pauseMedia();
+  }
+  const feedback = employerFeedback;
+  let sessionMessages = feedback.scope('review-session');
+  const indexMessages = feedback.scope('review-index');
+  const cardMessages = feedback.scope('review-cards');
+  let fieldSequence = 0;
+  function resetMessages() {
+    pendingWrites.clear();
+    sessionMessages.dispose(); sessionMessages = feedback.scope('review-session');
+  }
+  function fieldError(input, text, valid) {
+    const id = `review-field-${input.id || (input.dataset.feedbackId ||= ++fieldSequence)}`;
+    if (!text) return sessionMessages.clear(id);
+    sessionMessages.fieldError({ id, input, target: input.closest('label'), text, validate: valid });
+  }
+  async function refreshReport() {
+    if (busy || !openedInvitationId || !(await allowDiscard())) return;
+    reviewDialog?.destroy();
+    return openSession(openedInvitationId, true);
+  }
+  function saveError(error, scope, host) {
+    if (!scope.active) return;
+    const published = error.kind === 'published';
+    if (error.status === 409 || error.kind === 'stale') stale = true;
+    if (published && report) {
+      report.published = true; report.can_decide = false; setSessionMode(sessionReadOnly);
+      for (const input of el('review-session').querySelectorAll('form input, form select, form textarea, form button')) input.disabled = true;
+    }
+    if (host?.setError) { host.setError(error.message); host.setConfirmDisabled(stale); return; }
+    const target = typeof host === 'string' ? el(host) : host;
+    const id = `save-error-${target.id || (target.dataset.feedbackId ||= ++fieldSequence)}`;
+    scope.show({ id, target, text: error.message, tone: 'error',
+      action: [401, 403].includes(error.status) ? { label: 'Sign in', href: '/' }
+        : stale && !published ? { label: 'Refresh report', onClick: refreshReport } : undefined });
+  }
   let currentTab = "overview";
+  let reviewDialog = null, discardDialog = null;
 
   function node(tag, cls, text) {
     const element = document.createElement(tag);
@@ -31,15 +77,12 @@ window.employerReview = (() => {
     if (text !== undefined) element.textContent = text;
     return element;
   }
-  function message(id, text = "", error = false, dismissAfter = 0) {
-    const target = el(id);
-    if (messageTimers.has(id)) { clearTimeout(messageTimers.get(id)); messageTimers.delete(id); }
-    target.textContent = text; target.hidden = !text;
-    target.dataset.tone = error ? "error" : "success";
-    if (text && !error && dismissAfter > 0) {
-      const timer = window.setTimeout(() => { target.textContent = ""; target.hidden = true; messageTimers.delete(id); }, dismissAfter);
-      messageTimers.set(id, timer);
-    }
+  function message(id, text = '', error = false, dismissAfter = 0, action) {
+    if (!reviewVisible && text) return;
+    const scope = ['review-exam-error', 'review-exam-load-message'].includes(id) ? indexMessages
+      : ['review-queue-message', 'results-message'].includes(id) ? cardMessages : sessionMessages;
+    if (!text) return scope.clear(id);
+    return scope.show({ id, target: el(id), text, tone: error ? 'error' : 'loading', action });
   }
   function date(value) {
     return value ? new Date(value).toLocaleString("en-GB", { timeZone: "Africa/Nairobi", dateStyle: "medium", timeStyle: "short" }) + " EAT" : "—";
@@ -59,18 +102,39 @@ window.employerReview = (() => {
     }
   }
   async function api(url, options = {}) {
-    const response = await fetch(url, { credentials: "same-origin", ...options });
+    let response;
+    try { response = await fetch(url, { credentials: 'same-origin', ...options }); }
+    catch { throw new Error('Could not reach AssessBridge. Try again.'); }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = typeof data.detail === "string" ? data.detail : Array.isArray(data.detail) ? data.detail.map((item) => item.msg).join("; ") : "Request failed. Please try again.";
-      const error = new Error(detail); error.status = response.status; throw error;
+      const detail = typeof data.detail === 'string' ? data.detail : '';
+      const published = response.status === 409 && detail.startsWith('Results are published.');
+      const safe = {
+        'This review changed in another tab. Reload the report before saving.': 'This report changed. Refresh it before saving. Your unsaved work is still here.',
+        'Wait until the exam attempt ends before recording a disposition': 'The exam is still in progress. Review it after the attempt ends.',
+        'Wait until the exam attempt ends before recording a finding': 'The exam is still in progress. Save a finding after the attempt ends.',
+        'This system disqualification cannot be changed': 'This system disqualification is final.',
+        'Grade every answered written question before confirming the score': 'Grade every answered written question before saving the review.',
+        'Candidate session not found': 'This candidate session is unavailable.',
+        'Assessment not found': 'This assessment is unavailable.',
+        'Observation not found': 'This observation is unavailable. Refresh the report.',
+        'Interruption not found': 'This interruption is unavailable. Refresh the report.',
+      };
+      const text = published ? 'Results are published. This report is read only.' : safe[detail]
+        || (response.status === 401 || response.status === 403 ? 'Your session cannot access this report. Sign in again.'
+          : response.status === 409 ? 'This report changed or is not ready for saving. Refresh it before continuing.'
+            : response.status === 422 ? 'Check the grades and reasons, then try again.'
+              : options.method === 'POST' ? 'Could not confirm the save. Try again.' : 'Could not load this information. Try again.');
+      throw Object.assign(new Error(text), { status: response.status, kind: published ? 'published' : response.status === 409 ? 'stale' : 'request' });
     }
     return data;
   }
-  function base() { return `/api/employer/assessments/${assessmentId}/invitations/${report.invitation_id}`; }
+  function base() { return `/api/employer/assessments/${report.assessment_id}/invitations/${report.invitation_id}`; }
   function pauseMedia() { el("review-video").pause(); inlinePlayback?.video.pause(); }
   function closeInline() {
     if (!inlinePlayback) return;
+    sessionMessages.clear('inline-video-error');
+    sessionMessages.clear('review-playback-message');
     clearInterval(inlinePlayback.timer);
     inlinePlayback.video.pause(); inlinePlayback.video.removeAttribute("src"); inlinePlayback.video.load();
     inlinePlayback.wrap.remove(); inlinePlayback = null;
@@ -94,13 +158,19 @@ window.employerReview = (() => {
   }
   function closeReadOnlyReport() {
     if (!sessionReadOnly) return;
-    ++loading; clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear();
+    ++loading; resetMessages(); clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear();
     el("review-session").hidden = true;
     el("review-session-home").after(el("review-session"));
     el("results-case-host").hidden = true; el("results-list").hidden = false;
     setSessionMode(false);
   }
-  function allowDiscard() { return (!dirty && !findingDrafts.size && !connectivityDrafts.size) || window.confirm("Reloading or leaving will discard unsaved grades and reasons. Continue?"); }
+  async function allowDiscard() {
+    if (!dirty && !findingDrafts.size && !connectivityDrafts.size) return true;
+    if (discardDialog) return false;
+    discardDialog = indexMessages.confirm({ id: 'discard-review', title: 'Discard unsaved changes?',
+      text: 'Unsaved grades and reasons will be discarded.', confirmLabel: 'Discard changes', cancelLabel: 'Keep editing', destructive: true });
+    const accepted = await discardDialog.result; discardDialog = null; return accepted;
+  }
 
   function examWindow(item) {
     const now = Date.now();
@@ -169,8 +239,8 @@ window.employerReview = (() => {
     el("review-queue-code").textContent = `Exam code: ${item?.internal_reference || "Not set"}`;
   }
   async function openExam(item) {
-    if (busy || !allowDiscard()) return;
-    ++loading; clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear();
+    if (busy || !(await allowDiscard())) return;
+    ++loading; resetMessages(); clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear();
     assessmentId = item.id;
     el("results-assessment").value = String(assessmentId);
     renderQueueExamHeader();
@@ -179,8 +249,8 @@ window.employerReview = (() => {
     el("review-queue").scrollIntoView({ behavior: "instant", block: "start" });
     await loadCards();
   }
-  async function initialize(force = false) {
-    if (initPromise) return initPromise;
+  async function initialize(force = false, token = activationSerial) {
+    if (initPromise) { await initPromise; if (token !== activationSerial) return; }
     if (assessments && !force) return;
     initPromise = (async () => {
       const all = [];
@@ -188,6 +258,7 @@ window.employerReview = (() => {
         const result = await api(`/api/employer/assessments?page=${page}`); all.push(...result.items);
         if (all.length >= result.total || !result.items.length) break;
       }
+      if (token !== activationSerial) return;
       assessments = all;
       renderExamList();
       const select = el("results-assessment"); select.replaceChildren(new Option("Choose assessment", ""));
@@ -202,26 +273,31 @@ window.employerReview = (() => {
     try { await initPromise; } finally { initPromise = null; }
   }
   async function activate(tab = "review") {
+    reviewVisible = true;
+    const token = ++activationSerial;
+    if (busy) return;
     if (sessionReadOnly) closeReadOnlyReport();
     if (tab !== "review") pauseMedia();
-    try { await initialize(true); }
-    catch (error) { message("review-exam-error", error.message, true); message("review-queue-message", error.message, true); message("results-message", error.message, true); }
+    if (report) return;
+    message(tab === 'results' ? 'results-message' : 'review-exam-load-message', 'Loading assessments...');
+    try { await initialize(true, token); if (token === activationSerial) message('review-exam-load-message'); }
+    catch (error) { if (token !== activationSerial) return; message(tab === "results" ? "results-message" : "review-exam-load-message", error.message, true, 0, { label: "Retry", onClick: () => activate(tab) }); }
   }
   async function loadCards() {
+    const serial = ++cardLoading, owner = assessmentId;
     if (!assessmentId) { cards = []; cardsError = false; renderCards(); renderResults(); return; }
-    const serial = ++cardLoading;
     message("review-queue-message", "Loading candidates…");
     message("results-message");
     el("results-count").textContent = "Loading...";
     el("review-results-table").replaceChildren();
     try {
       const result = await api(`/api/employer/assessments/${assessmentId}/reviews`);
-      if (serial !== cardLoading) return;
+      if (serial !== cardLoading || owner !== assessmentId) return;
       cards = result.candidates; cardsError = false; renderCards(); renderResults(); message("review-queue-message"); message("results-message");
     } catch (error) {
-      if (serial !== cardLoading) return;
+      if (serial !== cardLoading || owner !== assessmentId) return;
       cards = []; cardsError = true; renderCards(); renderResults();
-      message("review-queue-message", error.message, true); message("results-message", error.message, true);
+      for (const id of ["review-queue-message", "results-message"]) message(id, error.message, true, 0, { label: "Retry", onClick: loadCards });
     }
   }
   function renderCards() {
@@ -244,7 +320,7 @@ window.employerReview = (() => {
       button.type = "button"; button.disabled = !card.has_session; button.addEventListener("click", () => openSession(card.invitation_id));
       article.append(button); list.append(article);
     }
-    if (!filtered.length) list.append(node("p", "review-empty", "No candidates match these filters."));
+    if (!filtered.length && !cardsError) list.append(node("p", "review-empty", cards.length ? "No candidates match these filters." : "No candidates invited."));
   }
   function renderResults() {
     const table = el("review-results-table"); table.replaceChildren();
@@ -276,7 +352,7 @@ window.employerReview = (() => {
       } else action.textContent = "—";
       row.append(candidate, attempt, automatic, final, action); table.append(row);
     }
-    if (!cards.length) { const row = node("tr"); const cell = node("td", "table-empty", cardsError ? "Results unavailable." : assessmentId ? "No candidates invited." : assessments?.length ? "Choose an exam." : "No exams yet."); cell.colSpan = 5; row.append(cell); table.append(row); }
+    if (!cards.length && !cardsError) { const row = node("tr"); const cell = node("td", "table-empty", assessmentId ? "No candidates invited." : assessments?.length ? "Choose an exam." : "No exams yet."); cell.colSpan = 5; row.append(cell); table.append(row); }
   }
   async function monitoringReport(url) {
     const result = await api(url); const events = [...result.events]; let after = result.next_after_id;
@@ -290,10 +366,10 @@ window.employerReview = (() => {
     return { ...result, events };
   }
   async function openSession(invitationId, reloading = false, readOnly = sessionReadOnly) {
-    if (busy || (!reloading && !allowDiscard())) return;
+    if (busy || (!reloading && !(await allowDiscard()))) return;
     const serial = ++loading;
     openedInvitationId = invitationId;
-    clearMedia(); report = null; stale = false; dirty = false; findingDrafts.clear(); connectivityDrafts.clear(); pendingDecision = null;
+    resetMessages(); clearMedia(); report = null; stale = false; dirty = false; findingDrafts.clear(); connectivityDrafts.clear();
     setSessionMode(readOnly);
     if (readOnly) {
       el("results-list").hidden = true; el("results-case-host").hidden = false;
@@ -319,7 +395,7 @@ window.employerReview = (() => {
       renderSession(); el("review-session").querySelector(".review-layout").hidden = false;
       message("review-session-message");
       selectTab(reloading ? currentTab : "overview");
-    } catch (error) { if (serial === loading) message("review-session-message", error.message, true); }
+    } catch (error) { if (serial === loading) message("review-session-message", error.message, true, 0, { label: "Retry", onClick: refreshReport }); }
   }
   function selectTab(tab) {
     currentTab = tab;
@@ -332,7 +408,8 @@ window.employerReview = (() => {
   }
   function renderSession() {
     setSessionMode(sessionReadOnly);
-    el("review-publication-lock").hidden = !report.published;
+    sessionMessages.clear('publication-lock');
+    if (report.published) sessionMessages.show({ id: 'publication-lock', target: '#review-publication-lock', tone: 'warning', text: 'Results are published. This report is read only.' });
     el("review-assessment-title").textContent = report.title;
     el("review-candidate-name").textContent = report.name; el("review-candidate-email").textContent = report.email;
     window.renderConnectivitySummary(el("review-connectivity"), report, () => selectTab("connectivity"));
@@ -466,6 +543,7 @@ window.employerReview = (() => {
   }
   function renderEvents() {
     closeInline();
+    for (const record of el('review-event-list').querySelectorAll('[data-message-id]')) sessionMessages.clear(record.dataset.messageId);
     const list = el("review-event-list"); list.replaceChildren();
     const filter = el("review-event-filter").value;
     const events = monitoring.events.filter((event) => filter === "all" || (filter === "unassessed" && !currentFinding(event.event_key)) || event.category === filter).sort((a, b) => eventOffset(a) - eventOffset(b));
@@ -480,11 +558,11 @@ window.employerReview = (() => {
       if (event.evidence && recording.parts.some((part) => part.id === event.part_id && part.total_bytes > 0)) {
         const play = node("button", "secondary-button review-play-observation", "Play observation"); play.type = "button";
         play.addEventListener("click", () => playEvent(event, article)); article.append(play);
-      } else article.append(node("p", "review-muted", "Video unavailable."));
+      } else { const warning = node("div", "editor-feedback-host"); article.append(warning); sessionMessages.show({ id: `missing-evidence-${event.event_key}`, target: warning, text: "Video unavailable.", tone: "warning" }); }
       const latest = currentFinding(event.event_key);
       if (latest) article.append(findingSummary(latest, "", false));
       if (sessionReadOnly || report.published) { list.append(article); continue; }
-      const form = node("form", "review-finding-form"); const choiceLabel = node("label", "", "Finding"); const choice = node("select");
+      const form = node("form", "review-finding-form"); form.noValidate = true; const choiceLabel = node("label", "", "Finding"); const choice = node("select");
       choice.add(new Option("Choose a finding", ""));
       for (const value of ["supports_violation", "dismissed", "inconclusive"]) choice.add(new Option(titles[value], value));
       choice.required = true; choiceLabel.append(choice);
@@ -494,27 +572,40 @@ window.employerReview = (() => {
       const remember = () => findingDrafts.set(event.event_key, { assessment: choice.value, reason: reason.value });
       choice.addEventListener("change", remember); reason.addEventListener("input", remember);
       const save = node("button", "secondary-button", "Save finding"); save.type = "submit"; save.disabled = busy || stale;
-      const feedback = node("p", "feedback-message"); feedback.hidden = true; feedback.setAttribute("role", "status");
-      form.append(node("h4", "", latest ? "Add another finding" : "Record a finding"), choiceLabel, reasonLabel, save, feedback);
-      form.addEventListener("submit", async (submit) => {
-        submit.preventDefault(); if (busy || stale || report?.published || !form.reportValidity()) return;
+      const notice = node("div", "editor-feedback-host");
+      form.append(node("h4", "", latest ? "Add another finding" : "Record a finding"), choiceLabel, reasonLabel, save, notice);
+      form.addEventListener('submit', async submit => {
+        submit.preventDefault(); if (busy || stale || report?.published) return;
+        const scope = sessionMessages;
+        const rules = [[choice, input => Boolean(input.value), 'Choose a finding.'],
+          [reason, input => input.value.trim().length >= 5 && input.value.length <= 5000, 'Enter a reason of at least 5 characters.']];
+        let first;
+        for (const [input, valid, text] of rules) { fieldError(input, valid(input) ? '' : text, valid); if (!valid(input)) first ||= input; }
+        if (first) { first.focus(); return; }
+        const failureId = `finding-error-${event.event_key}`;
+        scope.clear(failureId);
+        if (notice.dataset.feedbackId) scope.clear(`save-error-${notice.dataset.feedbackId}`);
         busy = true; save.disabled = true; updateDecisionDisabled();
-        const serial = loading;
+        const serial = loading, url = base();
+        let saved;
         try {
-          const saved = await api(`${base()}/review/events/${event.event_key}/findings`, { method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ expected_revision: report.revision, request_key: crypto.randomUUID(), assessment: choice.value, reason: reason.value.trim() }) });
-          const fresh = await api(`${base()}/review`);
-          if (serial !== loading) return;
-          if (fresh.revision !== saved.revision) { stale = true; throw new Error("The review changed again. Reload the report before continuing."); }
+          saved = await api(`${url}/review/events/${event.event_key}/findings`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: writeBody(`event:${event.event_key}`, { expected_revision: report.revision, assessment: choice.value, reason: reason.value.trim() }) });
+          const fresh = await api(`${url}/review`);
+          if (serial !== loading || !scope.active) return;
+          if (fresh.revision !== saved.revision) throw Object.assign(new Error('Finding saved. The report changed again. Refresh before saving more changes.'), { kind: 'stale' });
           findingDrafts.delete(event.event_key);
           report.revision = fresh.revision; report.findings = fresh.findings;
-          renderEvents(); renderFindingHistory(); message("review-session-message", "Finding saved.", false, 4000);
+          renderEvents(); renderFindingHistory(); notifySaved(scope, 'Finding saved.');
         } catch (error) {
-          if (error.status === 409) stale = true;
-          feedback.textContent = error.message; feedback.dataset.tone = "error"; feedback.hidden = false;
+          if (serial !== loading || !scope.active) return;
+          if (saved && !['stale', 'published'].includes(error.kind)) { stale = true; error.message = 'Finding saved. Could not refresh the report. Refresh before saving more changes.'; }
+          saveError(error, scope, notice);
         } finally {
-          busy = false; save.disabled = stale; updateDecisionDisabled();
-          for (const button of document.querySelectorAll(".review-finding-form button[type=submit]")) button.disabled = stale;
+          if (serial === loading && scope.active) {
+            busy = false; updateDecisionDisabled();
+            for (const button of document.querySelectorAll('.review-finding-form button[type=submit]')) button.disabled = stale || !!report?.published;
+          }
         }
       });
       article.append(form); list.append(article);
@@ -531,7 +622,11 @@ window.employerReview = (() => {
     if (!report.findings.length) list.append(node("p", "review-muted", "No observation findings recorded."));
   }
   function renderConnectivity() {
+    const scope = sessionMessages;
     window.renderConnectivityCase(el("review-connectivity-case"), report, {
+      feedback: scope,
+      canSave: () => !busy && !stale && !report?.published && !sessionReadOnly,
+      onError: (error, host) => saveError(error, scope, host),
       readOnly: sessionReadOnly || report.published,
       recordingAvailable: recording.parts.some(part => part.total_bytes > 0),
       onRecording: incident => {
@@ -546,20 +641,28 @@ window.employerReview = (() => {
       draft: id => connectivityDrafts.get(id),
       onDraft: (id, value) => connectivityDrafts.set(id, value),
       onSave: async (incident, finding, reason) => {
-        if (busy || stale) throw new Error("Reload the report before saving.");
-        busy = true;
+        if (busy || stale) throw Object.assign(new Error('Refresh the report before saving.'), { kind: 'stale' });
+        if (report?.published || sessionReadOnly) throw Object.assign(new Error('Results are published. This report is read only.'), { kind: 'published', status: 409 });
+        const serial = loading, url = base();
+        busy = true; updateDecisionDisabled();
+        let saved;
         try {
-          const saved = await api(`${base()}/review/interruptions/${incident.id}/findings`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ expected_revision: report.revision, request_key: crypto.randomUUID(), finding, reason }),
+          saved = await api(`${url}/review/interruptions/${incident.id}/findings`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: writeBody(`interruption:${incident.id}`, { expected_revision: report.revision, finding, reason }),
           });
-          const fresh = await api(`${base()}/review`);
-          if (fresh.revision !== saved.revision) { stale = true; throw new Error("The review changed. Reload the report."); }
+          const fresh = await api(`${url}/review`);
+          if (serial !== loading || !scope.active) return;
+          if (fresh.revision !== saved.revision) throw Object.assign(new Error('Finding saved. The report changed. Refresh before saving more changes.'), { kind: 'stale' });
           report = fresh; connectivityDrafts.delete(incident.id);
           renderConnectivity(); updateDecisionDisabled();
-          message("review-session-message", "Finding saved.", false, 4000);
-        } catch (error) { if (error.status === 409) stale = true; throw error; }
-        finally { busy = false; updateDecisionDisabled(); }
+          notifySaved(scope, 'Finding saved.');
+        } catch (error) {
+          if (serial !== loading || !scope.active) return;
+          if (saved && !['stale', 'published'].includes(error.kind)) { stale = true; error.message = 'Finding saved. Could not refresh the report. Refresh before saving more changes.'; }
+          if (error.status === 409 || error.kind === 'stale') stale = true;
+          throw error;
+        } finally { if (serial === loading && scope.active) { busy = false; updateDecisionDisabled(); } }
       },
     });
   }
@@ -569,8 +672,10 @@ window.employerReview = (() => {
     }));
     el("review-recording-toggle").hidden = !fullParts.length;
     const status = !fullParts.length ? "Recording unavailable." : recording.status === "complete" ? "" : "Recording incomplete.";
-    el("review-recording-message").textContent = status;
-    el("review-recording-message").hidden = !status;
+    sessionMessages.clear('recording-status');
+    if (status) sessionMessages.show({ id: 'recording-status', target: '#review-recording-message', text: status, tone: 'warning' });
+    sessionMessages.clear('reference-status');
+    if (!report.reference_available) sessionMessages.show({ id: 'reference-status', target: '#review-reference-message', text: 'Reference photo unavailable.', tone: 'warning' });
     el("review-reference-button").hidden = !report.reference_available;
     el("review-reference-button").disabled = false;
   }
@@ -611,7 +716,7 @@ window.employerReview = (() => {
       track.style.setProperty("--clip-end", `${clip ? Math.min(100, clip[1] / length * 100) : 0}%`);
     }
     play.addEventListener("click", () => {
-      if (video.paused) { options.beforePlay?.(); video.play().catch(() => {}); } else video.pause();
+      if (video.paused) { options.beforePlay?.(); playVideo(video); } else video.pause();
     });
     video.addEventListener("click", () => play.click());
     back.addEventListener("click", () => seek(Math.max(0, position() - 10)));
@@ -621,8 +726,7 @@ window.employerReview = (() => {
     volume.addEventListener("input", () => { video.volume = Number(volume.value); if (video.volume > 0) video.muted = false; update(); });
     speed?.addEventListener("click", () => { video.playbackRate = video.playbackRate >= 2 ? .75 : Math.round((video.playbackRate + .25) * 100) / 100; update(); });
     fullscreen?.addEventListener("click", () => {
-      if (document.fullscreenElement === options.container) document.exitFullscreen();
-      else options.container.requestFullscreen?.();
+      fullscreenVideo(options.container, video);
     });
     if (fullscreen) document.addEventListener("fullscreenchange", update);
     for (const event of ["timeupdate", "play", "pause", "loadedmetadata", "volumechange", "seeking", "ended"]) video.addEventListener(event, update);
@@ -632,13 +736,31 @@ window.employerReview = (() => {
     panel.append(track, row); host.append(panel); update();
     return { update, row };
   }
+  function playbackError(video, text) {
+    if (!video.isConnected || !reviewVisible) return;
+    const inline = inlinePlayback?.video === video;
+    const target = inline ? video.parentElement.querySelector('.editor-feedback-host') : el('review-playback-message');
+    if (target) sessionMessages.show({ id: inline ? 'inline-video-error' : 'review-playback-message', target, text, tone: 'error' });
+  }
+  function playVideo(video) {
+    const scope = sessionMessages, source = video.src;
+    video.play().then(() => { if (scope.active && source === video.src) scope.clear(video === inlinePlayback?.video ? 'inline-video-error' : 'review-playback-message'); }).catch(error => {
+      if (!scope.active || source !== video.src || error.name === 'AbortError') return;
+      playbackError(video, error.name === 'NotAllowedError' ? 'Playback was blocked. Select Play to try again.' : 'Could not play this recording. Try opening it again.');
+    });
+  }
+  function fullscreenVideo(container, video) {
+    const operation = document.fullscreenElement === container ? document.exitFullscreen() : container.requestFullscreen?.();
+    if (!operation) { playbackError(video, 'Fullscreen is unavailable. You can continue watching here.'); return; }
+    operation.catch(() => playbackError(video, 'Fullscreen is unavailable. You can continue watching here.'));
+  }
   function keyboardControls(container, video, duration, position, seek, beforePlay) {
     container.addEventListener("keydown", (event) => {
       if (event.altKey || event.ctrlKey || event.metaKey || event.target.matches("input, textarea, select, button")) return;
       let handled = true;
       switch (event.key.toLowerCase()) {
         case " ": case "k":
-          if (video.paused) { beforePlay?.(); video.play().catch(() => {}); } else video.pause();
+          if (video.paused) { beforePlay?.(); playVideo(video); } else video.pause();
           break;
         case "arrowleft": seek(position() - 5); break;
         case "arrowright": seek(position() + 5); break;
@@ -650,7 +772,7 @@ window.employerReview = (() => {
         case "home": seek(0); break;
         case "end": seek(duration()); break;
         case "f":
-          if (document.fullscreenElement === container) document.exitFullscreen(); else container.requestFullscreen?.();
+          fullscreenVideo(container, video);
           break;
         default: handled = false;
       }
@@ -668,7 +790,7 @@ window.employerReview = (() => {
       if (video.dataset.part !== String(part.id)) return;
       if (Number.isFinite(video.duration) && video.duration > 0) part.duration = video.duration;
       video.currentTime = Math.min(Math.max(0, seconds), Math.max(0, part.duration - .05));
-      mainControls?.update(); if (autoplay) { inlinePlayback?.video.pause(); video.play().catch(() => {}); }
+      mainControls?.update(); if (autoplay) { inlinePlayback?.video.pause(); playVideo(video); }
     };
     if (video.dataset.part !== String(part.id)) {
       video.pause(); video.dataset.part = String(part.id);
@@ -690,6 +812,7 @@ window.employerReview = (() => {
   }
   function openFullRecording() {
     if (!fullParts.length) return;
+    message("review-recording-message");
     el("review-recording-wrap").hidden = false;
     el("review-recording-toggle").textContent = "Close recording";
     if (!mainControls) mainControls = makeControls(el("review-recording-controls"), el("review-video"), fullDuration, fullPosition, seekFull, {
@@ -729,7 +852,7 @@ window.employerReview = (() => {
         if (inlinePlayback !== state || video.dataset.part !== String(part.id)) return;
         if (Number.isFinite(video.duration) && video.duration > 0) part.duration = video.duration;
         video.currentTime = Math.min(Math.max(0, seconds), Math.max(0, part.duration - .05));
-        state.controls?.update(); if (autoplay) { el("review-video").pause(); video.play().catch(() => {}); }
+        state.controls?.update(); if (autoplay) { el("review-video").pause(); playVideo(video); }
       };
       if (video.dataset.part !== String(part.id)) {
         video.pause(); video.dataset.part = String(part.id); video.onloadedmetadata = ready;
@@ -771,8 +894,10 @@ window.employerReview = (() => {
       if (state.loop) loadPart(eventIndex, event.start_ms / 1000, true);
       else if (state.index < parts.length - 1) loadPart(state.index + 1, 0, true);
     });
-    const status = node("p", "review-muted"); wrap.append(status);
-    video.addEventListener("error", () => { status.textContent = "Video unavailable."; });
+    const status = node('div', 'editor-feedback-host'); wrap.append(status);
+    const scope = sessionMessages;
+    video.addEventListener('error', () => { if (inlinePlayback === state) scope.show({ id: 'inline-video-error', target: status, text: 'Could not play this observation video. Try opening it again.', tone: 'error' }); });
+    video.addEventListener('loadeddata', () => scope.clear('inline-video-error'));
     loadPart(eventIndex, event.start_ms / 1000, true);
   }
   function actionChanged() {
@@ -788,14 +913,23 @@ window.employerReview = (() => {
   }
   function collectGrades(requireComplete) {
     const result = [];
-    for (const input of document.querySelectorAll("[data-grade-index]")) {
+    let first;
+    for (const input of document.querySelectorAll('[data-grade-index]')) {
       const reason = document.querySelector(`[data-grade-reason="${input.dataset.gradeIndex}"]`);
-      if (input.value === "" || reason.value.trim().length < 5 || !input.checkValidity()) {
-        if (requireComplete) { selectTab("results"); input.focus(); throw new Error("Grade each answered written question from 0 to 1 and provide a grading explanation of at least 5 characters."); }
+      const markValid = input => input.value !== '' && input.checkValidity();
+      const reasonValid = input => input.value.trim().length >= 5 && input.value.length <= 2000;
+      if (!markValid(input) || !reasonValid(reason)) {
+        if (requireComplete) {
+          fieldError(input, markValid(input) ? '' : 'Enter a mark from 0 to 1.', markValid);
+          fieldError(reason, reasonValid(reason) ? '' : 'Enter a grading explanation of at least 5 characters.', reasonValid);
+          first ||= !markValid(input) ? input : reason;
+        }
         continue;
       }
+      fieldError(input, ''); fieldError(reason, '');
       result.push({ question_index: Number(input.dataset.gradeIndex), marks: Number(input.value), reason: reason.value.trim() });
     }
+    if (first) { selectTab('results'); first.focus(); throw Object.assign(new Error('Complete the written grades.'), { validation: true }); }
     return result;
   }
   function draftScore() {
@@ -807,16 +941,22 @@ window.employerReview = (() => {
     el("review-draft-score").textContent = !report.can_decide ? (report.published ? "Results published" : report.decision_blocked_reason || "Exam still in progress") : `Answer grade total: ${incomplete ? "Incomplete" : score(Math.round(total * 100) / 100, report.scores.possible)}`;
   }
   el("review-decision-form").addEventListener("submit", (event) => {
-    event.preventDefault(); if (busy || stale || !report?.can_decide) return;
+    event.preventDefault(); if (busy || reviewDialog || stale || !report?.can_decide) return;
     try {
       const action = el("review-action").value;
+      sessionMessages.clear('review-decision-message');
+      const rules = [[el('review-action'), input => Boolean(input.value), 'Choose a review decision.'],
+        [el('review-reason'), input => input.value.trim().length >= 5 && input.value.length <= 5000, 'Enter a reason of at least 5 characters.']];
+      if (action === 'change_score') rules.splice(1, 0, [el('review-score'), input => input.value !== '' && input.checkValidity(), `Enter a final score from 0 to ${report.scores.possible}.`]);
+      let first;
+      for (const [input, valid, text] of rules) { fieldError(input, valid(input) ? '' : text, valid); if (!valid(input)) first ||= input; }
+      if (first) { first.focus(); return; }
       const payload = { expected_revision: report.revision, request_key: crypto.randomUUID(), action,
         reason: el("review-reason").value.trim(), grades: collectGrades(action !== "disqualify"),
         event_keys: [...new Set(report.findings.map((finding) => finding.event_key))].filter((key) => monitoring.events.some((item) => item.event_key === key)) };
       if (action === "change_score") payload.score = Number(el("review-score").value);
-      pendingDecision = payload;
-      el("review-confirm-dialog").dataset.disposition = action;
-      const summary = el("review-confirm-summary"); summary.replaceChildren();
+      const stablePayload = JSON.parse(writeBody('decision', { ...payload, request_key: undefined }));
+      const summary = node("div"); summary.id = "review-confirm-summary";
       summary.append(node("p", "", `${report.name} · ${report.title}`), node("strong", "", titles[action]));
       summary.append(node("p", "", `Current score: ${score(report.decision?.score ?? report.scores.calculated_score, report.scores.possible)}`));
       if (action === "change_score") summary.append(node("p", "", `New final score: ${score(payload.score, report.scores.possible)}`));
@@ -834,31 +974,51 @@ window.employerReview = (() => {
       if (findingDrafts.size) summary.append(node("p", "review-alert", `${findingDrafts.size} observation findings are still drafts. This decision will not save those findings.`));
       if (connectivityDrafts.size) summary.append(node("p", "review-alert", `${connectivityDrafts.size} interruption findings are still drafts. Save them before confirming the decision.`));
       if (unassessed || monitoring.status === "processing") summary.append(node("p", "review-alert", `${unassessed} observations have no finding. ${monitoring.status === "processing" ? "Monitoring is still processing; more evidence may arrive." : ""}`));
-      message("review-confirm-error"); el("review-confirm-save").disabled = false; el("review-confirm-cancel").disabled = false;
-      el("review-confirm-dialog").showModal();
-    } catch (error) { message("review-session-message", error.message, true); }
+      const scope = sessionMessages, serial = loading, url = base(), invitation = report.invitation_id;
+      let unsavedFindings, unsavedInterruptions;
+      const dialog = scope.confirm({ id: 'confirm-review', dialogId: 'review-confirm-dialog', confirmButtonId: 'review-confirm-save',
+        cancelButtonId: 'review-confirm-cancel', errorId: 'review-confirm-error', title: 'Confirm review decision',
+        text: 'Save this decision and the entered written grades?', content: summary,
+        confirmLabel: action === 'disqualify' ? 'Disqualify candidate' : 'Save review', busyLabel: 'Saving review...', destructive: action === 'disqualify',
+        onConfirm: async () => {
+          if (busy || stale || serial !== loading) return false;
+          busy = true; updateDecisionDisabled();
+          try {
+            await api(`${url}/review/decisions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stablePayload) });
+            if (serial !== loading || !scope.active) return false;
+            unsavedFindings = new Map(findingDrafts); unsavedInterruptions = new Map(connectivityDrafts);
+            dirty = false; return true;
+          } catch (error) { saveError(error, scope, dialog); return false; }
+          finally { busy = false; updateDecisionDisabled(); }
+        },
+      });
+      reviewDialog = dialog;
+      dialog.result.then(async accepted => {
+        if (reviewDialog === dialog) reviewDialog = null;
+        if (!scope.active || serial !== loading) return;
+        if (!accepted) {
+          if (report?.published) scope.show({ id: 'publication-lock', target: '#review-publication-lock', tone: 'warning', text: 'Results are published. This report is read only.' });
+          else if (stale) message('review-decision-message', 'This report changed. Refresh it before saving. Your unsaved work is still here.', true, 0,
+            { label: 'Refresh report', onClick: refreshReport });
+          return;
+        }
+        await openSession(invitation, true);
+        if (openedInvitationId !== invitation || sessionReadOnly) return;
+        if (!report) {
+          for (const [key, draft] of unsavedFindings) findingDrafts.set(key, draft);
+          for (const [key, draft] of unsavedInterruptions) connectivityDrafts.set(key, draft);
+          message('review-session-message', 'Review saved. Could not reload the report. Try again.', true, 0, { label: 'Retry', onClick: refreshReport });
+          return;
+        }
+        for (const [key, draft] of unsavedFindings) if (monitoring.events.some(event => event.event_key === key)) findingDrafts.set(key, draft);
+        for (const [key, draft] of unsavedInterruptions) connectivityDrafts.set(key, draft);
+        if (unsavedFindings.size) renderEvents();
+        if (unsavedInterruptions.size) renderConnectivity();
+        notifySaved(sessionMessages, 'Review saved.');
+        await loadCards();
+      });
+    } catch (error) { if (!error.validation) message('review-decision-message', error.message, true); }
   });
-  el("review-confirm-save").addEventListener("click", async () => {
-    if (busy || !pendingDecision || stale) return;
-    busy = true; el("review-confirm-save").disabled = true; el("review-confirm-cancel").disabled = true; updateDecisionDisabled();
-    try {
-      await api(`${base()}/review/decisions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingDecision) });
-      const invitation = report.invitation_id;
-      const unsavedFindings = new Map(findingDrafts);
-      dirty = false; pendingDecision = null; el("review-confirm-dialog").close(); busy = false;
-      await openSession(invitation, true);
-      for (const [key, draft] of unsavedFindings) if (monitoring.events.some((event) => event.event_key === key)) findingDrafts.set(key, draft);
-      if (report && unsavedFindings.size) renderEvents();
-      await loadCards(); message("review-session-message", "Review decision saved.", false, 4000);
-    } catch (error) {
-      if (error.status === 409) stale = true;
-      message("review-confirm-error", error.message, true);
-    } finally {
-      busy = false; el("review-confirm-save").disabled = stale; el("review-confirm-cancel").disabled = false; updateDecisionDisabled();
-    }
-  });
-  el("review-confirm-cancel").addEventListener("click", () => el("review-confirm-dialog").close());
-  el("review-confirm-dialog").addEventListener("cancel", (event) => { if (busy) event.preventDefault(); });
   el("review-action").addEventListener("change", () => { dirty = true; actionChanged(); });
   el("review-reason").addEventListener("input", () => { dirty = true; });
   el("review-score").addEventListener("input", () => { dirty = true; });
@@ -875,22 +1035,22 @@ window.employerReview = (() => {
     el("review-exams").scrollIntoView({ behavior: "instant", block: "start" });
   });
   el("results-assessment").addEventListener("change", async () => {
-    if (busy || !allowDiscard()) { el("results-assessment").value = assessmentId || ""; return; }
-    ++loading; clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear(); assessmentId = el("results-assessment").value ? Number(el("results-assessment").value) : null;
+    if (busy || !(await allowDiscard())) { el("results-assessment").value = assessmentId || ""; return; }
+    ++loading; resetMessages(); clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear(); assessmentId = el("results-assessment").value ? Number(el("results-assessment").value) : null;
     renderQueueExamHeader();
     el("review-exams").hidden = false; el("review-queue").hidden = true; el("review-session").hidden = true; await loadCards();
   });
   for (const id of ["review-refresh-cards", "results-refresh"]) el(id).addEventListener("click", loadCards);
-  el("review-reload").addEventListener("click", () => { if (openedInvitationId && !busy && allowDiscard()) openSession(openedInvitationId, true); });
-  el("review-back").addEventListener("click", () => {
-    if (busy || !allowDiscard()) return;
+  el("review-reload").addEventListener("click", refreshReport);
+  el("review-back").addEventListener("click", async () => {
+    if (busy || !(await allowDiscard())) return;
     if (sessionReadOnly) {
       closeReadOnlyReport();
       el("results-list").scrollIntoView({ behavior: "instant", block: "start" });
       loadCards();
       return;
     }
-    ++loading; clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear(); el("review-exams").hidden = true; el("review-queue").hidden = false; el("review-session").hidden = true;
+    ++loading; resetMessages(); clearMedia(); report = null; dirty = false; findingDrafts.clear(); connectivityDrafts.clear(); el("review-exams").hidden = true; el("review-queue").hidden = false; el("review-session").hidden = true;
     el("review-queue").scrollIntoView({ behavior: "instant", block: "start" }); loadCards();
   });
   for (const button of document.querySelectorAll("[data-review-tab]")) {
@@ -913,17 +1073,20 @@ window.employerReview = (() => {
       el("review-reference-photo").removeAttribute("src"); el("review-reference-button").textContent = "Open reference photo";
       return;
     }
+    message("review-reference-message");
     el("review-reference-wrap").hidden = false;
     el("review-reference-photo").src = `${base()}/review/reference`; el("review-reference-photo").hidden = false;
     el("review-reference-button").textContent = "Close reference photo";
   });
-  el("review-reference-photo").addEventListener("error", () => { el("review-reference-wrap").hidden = true; el("review-reference-photo").hidden = true; el("review-reference-button").textContent = "Open reference photo"; message("review-session-message", "Reference photo unavailable.", true); });
+  el("review-reference-photo").addEventListener("error", () => { el("review-reference-wrap").hidden = true; el("review-reference-photo").hidden = true; el("review-reference-button").textContent = "Open reference photo"; message("review-reference-message", "Reference photo unavailable. Try opening it again.", true); });
   el("review-video").addEventListener("ended", () => {
     if (fullIndex < fullParts.length - 1 && !el("review-recording-wrap").hidden) loadFullPart(fullIndex + 1, 0, true);
   });
-  el("review-video").addEventListener("error", () => { if (el("review-video").hasAttribute("src")) message("review-session-message", "This recording could not be played. It may be incomplete, expired, or no longer available.", true); });
+  el("review-video").addEventListener("error", () => { if (el("review-video").hasAttribute("src")) playbackError(el("review-video"), "Could not play this recording. Try opening it again."); });
+  el('review-video').addEventListener('loadeddata', () => { message('review-recording-message'); sessionMessages.clear('review-playback-message'); });
+  el('review-reference-photo').addEventListener('load', () => message('review-reference-message'));
   window.setInterval(() => { if (!el("review-exams").hidden) renderExamList(); else if (!el("review-session").hidden) updateTimeUsed(); }, 30000);
   window.addEventListener("beforeunload", (event) => { if (dirty || findingDrafts.size || connectivityDrafts.size) { event.preventDefault(); event.returnValue = ""; } });
   if (["review", "results"].includes(location.hash.slice(1))) activate();
-  return { activate, pauseMedia };
+  return { activate, pauseMedia, deactivate };
 })();

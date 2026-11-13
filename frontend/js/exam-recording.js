@@ -15,8 +15,7 @@ const examRecording = (() => {
       detail.textContent = `Final upload: ${mb(uploadProgress.ack)} / ${mb(total)} MB. Keep SEB open.`;
     } else { bar.removeAttribute('value'); detail.textContent = 'Preparing the final recording. Keep SEB open.'; }
     if (message) {
-      document.getElementById('recording-final-status').textContent = message;
-      document.getElementById('recording-final-status').dataset.state = tone;
+      candidateFeedback.show('recording-final-status', message, tone === 'error' ? 'error' : 'loading', { announce: false });
     }
   }
   const store = () => window.examStorage;
@@ -24,8 +23,8 @@ const examRecording = (() => {
   const chunkName = (id, seq) => `chunk:${String(id).padStart(12, "0")}:${String(seq).padStart(8, "0")}`;
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   function status(label, tone = "saved") {
-    const target = document.getElementById("recording-status");
-    target.textContent = label; target.dataset.state = tone;
+    if (typeof attemptState !== "undefined" && ["submitted", "interrupted", "disqualified"].includes(attemptState?.state)) return;
+    candidateFeedback.status("recording-status", label, tone);
     window.examFlow?.deviceStatusChanged?.();
   }
   async function request(path, options = {}) {
@@ -35,7 +34,7 @@ const examRecording = (() => {
       const response = await fetch(path, { credentials: "same-origin", ...options, signal: controller.signal,
         headers: { ...options.headers, ...await window.assessbridgeSeb.headers(), "X-Exam-Client": window.examClientId } });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) { const error = new Error(body.detail || "Recording upload failed"); error.status = response.status; throw error; }
+      if (!response.ok) { const error = new Error(candidateFeedback.serverError(response, body, "Recording upload failed. Reconnect and retry.")); error.status = response.status; throw error; }
       return body;
     } catch (error) {
       if (!error.status || error.status >= 500) window.examRecovery?.lost();
@@ -82,7 +81,7 @@ const examRecording = (() => {
         startPump();
       }).catch(error => {
         failed = true; capturePart.interrupted = true;
-        status(error.message || "Recording could not be saved on this device", "error");
+        status("Recording could not be saved on this device. Free storage and retry.", "error");
         if (recorder?.state === "recording") recorder.stop();
       });
     });

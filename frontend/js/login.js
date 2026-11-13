@@ -1,4 +1,4 @@
-﻿const form = document.querySelector("#login-form");
+const form = document.querySelector("#login-form");
 const username = document.querySelector("#username");
 const password = document.querySelector("#password");
 const togglePassword = document.querySelector("#toggle-password");
@@ -16,15 +16,13 @@ const roleNames = {
 
 document.querySelector("#year").textContent = new Date().getFullYear();
 
-function setFieldError(input, show) {
-  input.setAttribute("aria-invalid", String(show));
-  document.querySelector(`#${input.id}-error`).hidden = !show;
-}
-
-function showMessage(message, isError = true) {
-  formMessage.textContent = message;
-  formMessage.classList.toggle("error", isError);
-  formMessage.hidden = false;
+const feedback = AssessBridgeAccountFeedback;
+const loginTask = feedback.manager.scope("sign-in");
+const signOutTask = feedback.manager.scope("sign-out");
+let interacted = false;
+form.addEventListener("input", () => { interacted = true; });
+function showMessage(text) {
+  feedback.notice(loginTask, formMessage, text);
 }
 
 function showAuthenticated(user) {
@@ -45,14 +43,8 @@ function showAuthenticated(user) {
   document.querySelector("#signed-in-role").textContent = roleNames[user.role] || user.role;
   form.hidden = true;
   signedInPanel.hidden = false;
-  signOutMessage.hidden = true;
-}
-
-for (const input of [username, password]) {
-  input.addEventListener("input", () => {
-    if (input.value.trim()) setFieldError(input, false);
-    formMessage.hidden = true;
-  });
+  loginTask.clearAll();
+  signOutTask.clearAll();
 }
 
 togglePassword.addEventListener("click", () => {
@@ -65,16 +57,13 @@ togglePassword.addEventListener("click", () => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const missingUsername = !username.value.trim();
-  const missingPassword = !password.value.trim();
-  setFieldError(username, missingUsername);
-  setFieldError(password, missingPassword);
-  formMessage.hidden = true;
-
-  if (missingUsername || missingPassword) {
-    (missingUsername ? username : password).focus();
-    return;
-  }
+  if (signInButton.disabled) return;
+  interacted = true;
+  loginTask.clear('status');
+  if (!feedback.validate(loginTask, [
+    [username, feedback.present, "Enter your email or username."],
+    [password, feedback.present, "Enter your password."],
+  ])) return;
 
   signInButton.disabled = true;
   try {
@@ -85,7 +74,7 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({ username: username.value.trim(), password: password.value }),
     });
     if (!response.ok) {
-      showMessage(response.status === 401 ? "Invalid email, username, or password." : "Sign-in is unavailable. Please try again.");
+      showMessage(response.status === 401 ? "Email, username, or password is incorrect. If you just registered, verify your email first." : "Sign-in is unavailable. Please try again.");
       return;
     }
     showAuthenticated(await response.json());
@@ -97,6 +86,7 @@ form.addEventListener("submit", async (event) => {
 });
 
 signOutButton.addEventListener("click", async () => {
+  if (signOutButton.disabled) return;
   signOutButton.disabled = true;
   try {
     const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
@@ -104,10 +94,10 @@ signOutButton.addEventListener("click", async () => {
     signedInPanel.hidden = true;
     form.hidden = false;
     form.reset();
+    signOutTask.clearAll();
     username.focus();
   } catch {
-    signOutMessage.textContent = "Could not sign out. Please try again.";
-    signOutMessage.hidden = false;
+    feedback.notice(signOutTask, signOutMessage, "Could not sign out. Try again.");
   } finally {
     signOutButton.disabled = false;
   }
@@ -115,5 +105,5 @@ signOutButton.addEventListener("click", async () => {
 
 fetch("/api/auth/me", { credentials: "same-origin" })
   .then((response) => response.ok ? response.json() : null)
-  .then((user) => { if (user) showAuthenticated(user); })
+  .then((user) => { if (user && !interacted) showAuthenticated(user); })
   .catch(() => {});

@@ -4,10 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Enter exam | AssessBridge</title>
-    <link rel="stylesheet" href="/css/candidate.css" />
-    <link rel="stylesheet" href="/css/exam-entry.css" />
+    <link rel="stylesheet" href="/css/candidate.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/exam-entry.css?v=20261112-feedback" />
     <script src="/js/seb-client.js" defer></script>
-    <script src="/js/exam-entry.js?v=20261106-recovery-2" defer></script>
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/account-feedback.js?v=20261112" defer></script>
+    <script src="/js/exam-entry.js?v=20261112-feedback" defer></script>
   </head>
   <body>
     <main class="entry-shell">
@@ -18,6 +21,7 @@
         <p>Sign in to the candidate account registered with the email that received your invitation, then enter its exam-only credentials.</p>
         <p>New candidate? Select Exit SEB below. In a regular browser, use the registration link in your invitation and verify your email before opening SEB again.</p>
       </div>
+      <div id="account-notifications"></div>
       <section class="entry-card" aria-labelledby="entry-step-title">
         <p id="entry-step" class="step-label">Step 1 of 2</p>
         <h2 id="entry-step-title">Candidate account</h2>
@@ -36,11 +40,11 @@
           </form>
           <button id="switch-account" class="text-button switch-account" type="button">Use another candidate account</button>
         </div>
-        <p id="entry-message" class="feedback" role="status" aria-live="polite" hidden></p>
+        <div id="entry-message"></div>
         <div id="exam-result" class="exam-result" hidden>
           <h3 id="exam-title"></h3>
           <p id="exam-window"></p>
-          <p id="exam-status"></p>
+          <div id="exam-status"></div>
           <a id="open-exam-room" class="primary-button" href="/exam-room" hidden>Open assessment</a>
           <a id="leave-seb" class="secondary-button" href="/seb/exit" hidden>Exit SEB</a>
           <button id="try-another-exam" class="text-button switch-account" type="button">Enter another exam's credentials</button>

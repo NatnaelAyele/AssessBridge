@@ -5,20 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b4c9c" />
     <title>Exam room | AssessBridge</title>
-    <link rel="stylesheet" href="css/exam-room.css?v=20261107-connectivity-upload" />
+    <link rel="stylesheet" href="css/exam-room.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/candidate-feedback.js?v=20261112-dialogs" defer></script>
     <script src="js/seb-client.js" defer></script>
     <script src="js/exam-storage.js?v=20261106-recovery" defer></script>
-    <script src="js/exam-connectivity.js?v=20261107-connectivity-upload" defer></script>
-    <script src="js/exam-room.js?v=20261107-identity-options" defer></script>
-    <script src="js/identity-crop.js?v=20261107-card-outline" defer></script>
-    <script src="js/identity.js?v=20261107-card-outline" defer></script>
-    <script src="js/exam-recording.js?v=20261107-connectivity-upload" defer></script>
-    <script src="js/exam-attempt.js?v=20261107-connectivity-upload" defer></script>
+    <script src="js/exam-connectivity.js?v=20261112-feedback-candidate" defer></script>
+    <script src="js/exam-room.js?v=20261113-lifecycle" defer></script>
+    <script src="js/identity-crop.js?v=20261112-feedback-candidate" defer></script>
+    <script src="js/identity.js?v=20261112-feedback-candidate" defer></script>
+    <script src="js/exam-recording.js?v=20261112-feedback-candidate" defer></script>
+    <script src="js/exam-attempt.js?v=20261113-lifecycle" defer></script>
   </head>
   <body>
     <main class="room-shell">
       <div class="room-header"><span class="brand-mark" aria-hidden="true">A</span><span>AssessBridge</span></div>
-      <p id="connection-status" class="save-status" role="status" aria-live="polite"></p>
+      <div id="candidate-notifications"></div>
+      <div id="connection-status" class="candidate-feedback-host"></div>
       <section id="loading-panel" class="room-card" aria-live="polite"><p>Opening your exam room…</p></section>
       <section id="consent-panel" class="room-card" hidden>
         <p class="eyebrow">BEFORE YOU CONTINUE</p>
@@ -27,7 +31,7 @@
         <div class="policy-links"><a href="/policies/privacy" target="_blank" rel="noopener">Privacy Policy <span aria-hidden="true">↗</span></a><a href="/policies/data-control" target="_blank" rel="noopener">Data Control Policy <span aria-hidden="true">↗</span></a></div>
         <form id="consent-form">
           <label class="agreement"><input id="agree" type="checkbox" /><span>I agree to the identity image comparison, recording, automated monitoring, and data use described above and in the linked policies.</span></label>
-          <p id="consent-error" class="error" role="alert" hidden></p>
+          <div id="consent-error" class="candidate-feedback-host"></div>
           <button id="continue-button" class="primary-button" type="submit" disabled>Agree and continue <span aria-hidden="true">→</span></button>
         </form>
         <a class="back-link" href="/seb/exit">Exit SEB before starting</a>
@@ -42,11 +46,11 @@
         </div>
         <div class="preview-area"><video id="camera-preview" autoplay muted playsinline aria-label="Live camera preview"></video><span id="preview-placeholder">Camera preview appears after access is granted.</span></div>
         <div id="mic-check" class="mic-check" hidden><span>Microphone activity</span><div class="meter" role="img" aria-label="Microphone activity indicator"><span id="mic-level"></span></div><small>Speak to see the bar move. Silence does not block the check.</small></div>
-        <p id="network-check-status" role="status"></p>
+        <div id="network-check-status" class="candidate-feedback-host"></div>
         <p id="resume-timer" class="resume-timer" hidden></p>
         <a id="exit-before-start" class="back-link" href="/seb/exit" hidden>Exit SEB before starting</a>
         <button id="report-interruption-devices" class="text-button interruption-action" type="button" hidden>Leave exam and be disqualified</button>
-        <p id="device-error" class="error" role="alert" hidden></p>
+        <div id="device-error" class="candidate-feedback-host"></div>
         <div class="device-actions"><button id="grant-devices" class="secondary-button" type="button">Grant camera and microphone access</button><button id="continue-devices" class="primary-button" type="button" disabled>Continue <span aria-hidden="true">→</span></button></div>
       </section>
       <section id="identity-panel" class="room-card" hidden>
@@ -69,16 +73,16 @@
             <button class="card-crop-handle" data-corner="2" type="button" aria-label="Bottom right corner" aria-describedby="card-crop-help"></button>
             <button class="card-crop-handle" data-corner="3" type="button" aria-label="Bottom left corner" aria-describedby="card-crop-help"></button>
           </div>
-          <p id="card-crop-error" class="error" role="alert" hidden></p>
+          <div id="card-crop-error" class="candidate-feedback-host"></div>
           <div class="card-crop-actions"><button id="apply-card-outline" class="secondary-button" type="button">Use this outline</button><button id="cancel-card-outline" class="text-button" type="button">Cancel</button></div>
         </section>
         <p class="identity-note">This compares the printed name and portrait with your invitation and camera image. It does not check the card against the issuer's records.</p>
-        <p id="identity-check-result" class="identity-check-result" role="status" aria-live="polite" hidden></p>
-        <p id="identity-error" class="error" role="alert" hidden></p>
+        <div id="identity-check-result" class="candidate-feedback-host"></div>
+        <div id="identity-error" class="candidate-feedback-host"></div>
         <button id="verify-identity" class="primary-button" type="button" disabled>Check identity</button>
         <a class="back-link" href="/seb/exit">Exit SEB before starting</a>
       </section>
-      <section id="recovery-panel" class="room-card" hidden><p class="eyebrow">RESUME EXAM</p><h1>Confirm your identity</h1><p>Look at the camera to return to your attempt. Your exam timer continues.</p><video id="recovery-preview" class="identity-camera-preview" autoplay muted playsinline></video><p id="recovery-error" class="error" role="alert" hidden></p><button id="verify-recovery" class="primary-button" type="button">Check face and resume</button><button id="leave-recovery" class="text-button" type="button">Leave exam and be disqualified</button></section>
+      <section id="recovery-panel" class="room-card" hidden><p class="eyebrow">RESUME EXAM</p><h1>Confirm your identity</h1><p>Look at the camera to return to your attempt. Your exam timer continues.</p><video id="recovery-preview" class="identity-camera-preview" autoplay muted playsinline></video><div id="recovery-error" class="candidate-feedback-host"></div><button id="verify-recovery" class="primary-button" type="button">Check face and resume</button><button id="leave-recovery" class="text-button" type="button">Leave exam and be disqualified</button></section>
       <section id="instructions-panel" class="room-card" hidden>
         <p class="eyebrow">EXAM INSTRUCTIONS</p>
         <h1 id="instructions-title">Before you start</h1>
@@ -89,11 +93,11 @@
         <p class="instruction-note">Only you may be visible during the exam. Your camera and microphone will be recorded and analysed from Start exam until submission or exit. Automated observations are saved for human review. Recording uploads in short pieces. During connection loss, you may edit the current question while recording continues. Answers must reach the server before the deadline. After the exam, keep SEB open while remaining footage uploads, for up to 15 minutes.</p>
         <button id="start-exam" class="primary-button" type="button">Start exam <span aria-hidden="true">→</span></button>
         <a class="back-link" href="/seb/exit">Exit SEB before starting</a>
-        <p id="start-error" class="error" role="alert" hidden></p>
+        <div id="start-error" class="candidate-feedback-host"></div>
       </section>
       <section id="exam-panel" class="room-card exam-card" hidden>
-        <div class="exam-topline"><div><p class="eyebrow">ASSESSMENT IN PROGRESS</p><strong id="exam-progress">Question 1 of 10</strong></div><div class="exam-top-status"><span id="recording-status" class="save-status" data-state="saving" role="status" aria-live="polite">Preparing recording</span><span id="save-status" class="save-status" data-state="saved" role="status" aria-live="polite">Saved</span><span id="exam-timer" class="exam-timer" role="timer" aria-live="off">00:00</span></div></div>
-        <div class="exam-content"><div class="question-content"><h1 id="question-prompt"></h1><div id="answer-area"></div><p id="exam-error" class="error" role="alert" hidden></p><div class="exam-actions"><button id="previous-question" class="secondary-button" type="button">← Previous</button><button id="next-question" class="primary-button" type="button">Next →</button></div><button id="report-interruption" class="text-button interruption-action" type="button">Leave exam and be disqualified</button></div><div class="exam-camera"><video id="exam-preview" autoplay muted playsinline aria-label="Live camera preview"></video><span>Camera preview · recording during the exam</span><div id="exam-device-warning" class="device-warning" role="alert" hidden><p id="exam-monitoring-warning">Camera or microphone disconnected.</p><button id="reconnect-devices" class="secondary-button" type="button">Reconnect devices</button><button id="retry-recording" class="secondary-button" type="button" hidden>Retry recording</button></div></div></div>
+        <div class="exam-topline"><div><p class="eyebrow">ASSESSMENT IN PROGRESS</p><strong id="exam-progress">Question 1 of 10</strong></div><div class="exam-top-status"><div id="recording-status"></div><div id="save-status"></div><span id="exam-timer" class="exam-timer" role="timer" aria-live="off">00:00</span></div></div>
+        <div class="exam-content"><div class="question-content"><h1 id="question-prompt"></h1><div id="answer-area"></div><div id="exam-error" class="candidate-feedback-host"></div><div class="exam-actions"><button id="previous-question" class="secondary-button" type="button">← Previous</button><button id="next-question" class="primary-button" type="button">Next →</button></div><button id="report-interruption" class="text-button interruption-action" type="button">Leave exam and be disqualified</button></div><div class="exam-camera"><video id="exam-preview" autoplay muted playsinline aria-label="Live camera preview"></video><span>Camera preview · recording during the exam</span><div id="exam-device-warning" class="device-warning" hidden><div id="exam-monitoring-warning" class="candidate-feedback-host"></div><button id="reconnect-devices" class="secondary-button" type="button">Reconnect devices</button><button id="retry-recording" class="secondary-button" type="button" hidden>Retry recording</button></div></div></div>
       </section>
       <section id="submitted-panel" class="room-card" hidden>
         <span class="accepted-mark" aria-hidden="true">✓</span>
@@ -101,15 +105,15 @@
         <h1 id="submitted-title">Your exam has been submitted</h1>
         <p id="submitted-message" class="next-copy"></p>
         <p id="submitted-progress" class="submitted-progress"></p>
-        <p id="recording-final-status" class="next-copy" role="status" aria-live="polite"></p>
+        <div id="recording-final-status" class="candidate-feedback-host"></div>
         <progress id="recording-upload-progress" max="100" aria-label="Final recording upload" hidden></progress>
-        <p id="recording-upload-detail" class="next-copy" aria-live="polite"></p>
+        <p id="recording-upload-detail" class="next-copy" aria-live="off"></p>
         <button id="retry-final-upload" class="secondary-button" type="button" hidden>Retry upload</button>
+        <div id="recording-completeness" class="candidate-feedback-host"></div>
         <button id="exit-exam" class="primary-button exit-action" type="button" hidden>Exit exam</button>
       </section>
       <section id="disqualified-panel" class="room-card" hidden><p class="eyebrow">EXAM DISQUALIFIED</p><h1>This attempt has ended</h1><p id="disqualified-message"></p><a class="primary-button exit-action" href="/seb/exit">Exit SEB</a></section>
-      <section id="room-error" class="room-card" hidden><h1>Exam room unavailable</h1><p id="room-error-message"></p><p>Check your connection and retry. The exam timer continues during an interruption. Reconnect promptly to recover your attempt. If SEB is stuck, use the emergency quit code in your invitation.</p><button class="secondary-button" type="button" onclick="location.reload()">Retry</button><a class="back-link" href="/seb/exit">Exit SEB</a></section>
+      <section id="room-error" class="room-card" hidden><h1>Exam room unavailable</h1><div id="room-error-message" class="candidate-feedback-host"></div><p>Check your connection and retry. The exam timer continues during an interruption. Reconnect promptly to recover your attempt. If SEB is stuck, use the emergency quit code in your invitation.</p><button class="secondary-button" type="button" onclick="location.reload()">Retry</button><a class="back-link" href="/seb/exit">Exit SEB</a></section>
     </main>
-    <dialog id="submit-dialog" class="submit-dialog" aria-labelledby="submit-dialog-title" aria-describedby="submit-dialog-message"><h2 id="submit-dialog-title">Submit your exam?</h2><p id="submit-dialog-message"></p><div class="submit-dialog-actions"><button id="cancel-submit" class="secondary-button" type="button">Keep working</button><button id="confirm-submit" class="primary-button" type="button">Confirm submission</button></div></dialog>
   </body>
 </html>

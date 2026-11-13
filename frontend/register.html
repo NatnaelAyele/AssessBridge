@@ -4,9 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Create candidate account | AssessBridge</title>
-    <link rel="stylesheet" href="/css/candidate.css?v=20261028-email-registration" />
-    <link rel="stylesheet" href="/css/exam-entry.css?v=20261028-email-registration" />
-    <script src="/js/register.js?v=20261028-email-registration" defer></script>
+    <link rel="stylesheet" href="/css/candidate.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/exam-entry.css?v=20261112-feedback" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/account-feedback.js?v=20261112" defer></script>
+    <script src="/js/register.js?v=20261112-feedback" defer></script>
   </head>
   <body>
     <main class="entry-shell registration-shell">
@@ -16,6 +19,7 @@
         <h1>Create your account</h1>
         <p>Use the email address that receives your exam invitations. We’ll send a verification link before you can sign in.</p>
       </div>
+      <div id="account-notifications"></div>
       <section class="entry-card" aria-labelledby="register-title">
         <h2 id="register-title">Register with email</h2>
         <form id="register-form" novalidate>
@@ -24,13 +28,8 @@
           <div class="field"><label for="confirm-password">Confirm password</label><input id="confirm-password" type="password" autocomplete="new-password" required /></div>
           <button class="primary-button" type="submit">Create account</button>
         </form>
-        <p id="register-message" class="feedback" role="status" aria-live="polite" hidden></p>
-        <div id="registered-panel" class="registration-success" hidden>
-          <span class="verified">Verification email sent</span>
-          <h3>Check your inbox</h3>
-          <p>Open the verification link we sent to <strong id="registered-email"></strong>. Then sign in and open your exam link in Safe Exam Browser.</p>
-          <a href="/" class="primary-button">Sign in after verification</a>
-        </div>
+        <div id="register-message"></div>
+        <div id="registered-panel" hidden></div>
         <div class="registration-footer">
           <p>Already registered? <a href="/">Sign in</a></p>
           <button id="show-resend" class="text-button" type="button" aria-expanded="false" aria-controls="resend-panel">Need a new verification link?</button>
@@ -42,7 +41,7 @@
             <div class="field"><label for="resend-password">Password</label><input id="resend-password" type="password" autocomplete="current-password" required /></div>
             <button class="secondary-button" type="submit">Resend link</button>
           </form>
-          <p id="resend-message" class="feedback" role="status" aria-live="polite" hidden></p>
+          <div id="resend-message"></div>
         </div>
       </section>
     </main>
