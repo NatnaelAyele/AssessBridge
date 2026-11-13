@@ -1,0 +1,30 @@
+.entry-shell { max-width: 760px; margin: 0 auto; padding: 38px 24px 90px; }
+.entry-heading { margin: 72px 0 30px; }
+.entry-heading > p:last-child { max-width: 570px; color: #5c6f87; line-height: 1.6; }
+.entry-card { max-width: 620px; }
+.step-label { margin: 0 0 10px; color: #0b58ad; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.signed-in-as { margin: 0 0 24px; color: #5c6f87; font-size: 14px; }
+.switch-account { margin-top: 22px; padding: 0; }
+.exam-result { margin-top: 25px; padding-top: 23px; border-top: 1px solid #e1e9f3; }
+.exam-result h3 { margin: 0 0 10px; color: #142e51; }
+.exam-result p { margin: 0 0 12px; color: #5c6f87; line-height: 1.5; }
+.exam-result .primary-button { margin-top: 12px; text-decoration: none; }
+.exam-result .secondary-button { display: inline-flex; align-items: center; margin-top: 12px; text-decoration: none; }
+.entry-footer-link { margin: 24px 0 0; color: #5c6f87; font-size: 14px; }
+.entry-footer-link a, .entry-heading a, .entry-card a:not(.primary-button) { color: #0b58ad; font-weight: 700; }
+@media (max-width: 600px) { .entry-heading { margin-top: 48px; } }
+.registration-shell { max-width: 700px; }
+.registration-shell .entry-heading { margin: 54px 0 28px; }
+.registration-shell .entry-card { max-width: 540px; }
+.registration-shell .entry-card h2 { margin-bottom: 24px; }
+.registration-shell .field-hint { display: block; margin-top: 7px; color: #667a94; font-size: 12px; }
+.registration-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; margin-top: 28px; padding-top: 20px; border-top: 1px solid #e1e9f3; color: #5c6f87; font-size: 14px; }
+.registration-footer p { margin: 0; }
+.registration-footer .text-button { padding: 0; font-size: 14px; }
+.resend-panel { margin-top: 22px; padding: 22px; border: 1px solid #dce8f5; border-radius: 10px; background: #f8fbff; }
+.resend-panel h3 { margin: 0 0 20px; font-size: 18px; }
+.resend-panel .field { margin-bottom: 17px; }
+
+#register-message:not(:empty), #resend-message:not(:empty), #entry-message:not(:empty) { margin-top: 16px; }
+#exam-status:not(:empty) { margin-bottom: 16px; }
+.entry-card input[aria-invalid="true"] { border-color: #a21d38; }

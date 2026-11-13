@@ -1,8 +1,12 @@
 ﻿const byId = (id) => document.getElementById(id);
 
 let dashboardLoad = 0;
+function dashboardMessage(text = '', action) {
+  candidateFeedback.show('dashboard-message', text, 'error', { action: action || (text ? { label: 'Retry', onClick: loadDashboard } : undefined) });
+}
 
 function selectTab(tab) {
+  ++dashboardLoad; dashboardMessage();
   const history = tab === "history";
   byId("enter-panel").hidden = history;
   byId("history-panel").hidden = !history;
@@ -106,22 +110,30 @@ function renderList(id, items, renderer, emptyText) {
 
 async function loadDashboard() {
   const serial = ++dashboardLoad;
-  const response = await fetch("/api/candidate/assessments", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("Could not load your assessments. Refresh the page to try again.");
-  const data = await response.json();
-  if (serial !== dashboardLoad) return;
-  const assessments = data.assessments || [];
-  renderList("active-list", assessments.filter((item) => !["submitted", "disqualified", "interrupted"].includes(item.status)), renderAssessment,
-    "No invitations are assigned to your registered email yet. If you received one, check that you registered and verified the same address.");
-  renderList("history-list", assessments.filter((item) => ["submitted", "disqualified", "interrupted"].includes(item.status)), renderHistory,
-    "No completed exams yet. Your submitted assessments will appear here.");
+  let response;
+  try {
+    response = await fetch('/api/candidate/assessments', { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('Could not load your assessments. Try again.');
+    const data = await response.json();
+    if (serial !== dashboardLoad) return;
+    dashboardMessage();
+    const assessments = data.assessments || [];
+    renderList('active-list', assessments.filter(item => !['submitted', 'disqualified', 'interrupted'].includes(item.status)), renderAssessment,
+      'No invitations are assigned to your registered email yet.');
+    renderList('history-list', assessments.filter(item => ['submitted', 'disqualified', 'interrupted'].includes(item.status)), renderHistory,
+      'No completed exams yet.');
+  } catch {
+    if (serial !== dashboardLoad) return;
+    const expired = response?.status === 401, denied = response?.status === 403;
+    dashboardMessage(expired ? 'Your session ended. Sign in again.' : denied ? 'Your account cannot access these assessments.' : 'Could not load your assessments. Try again.',
+      expired || denied ? { label: 'Sign in', href: '/' } : undefined);
+  }
 }
 
 byId("enter-tab").addEventListener("click", () => selectTab("enter"));
 byId("history-tab").addEventListener("click", async () => {
   selectTab("history");
-  try { await loadDashboard(); byId("dashboard-message").hidden = true; }
-  catch (error) { byId("dashboard-message").textContent = error.message; byId("dashboard-message").hidden = false; }
+  await loadDashboard();
 });
 byId("sign-out").addEventListener("click", async () => {
   const button = byId("sign-out");
@@ -132,8 +144,7 @@ byId("sign-out").addEventListener("click", async () => {
     location.assign("/");
   } catch {
     button.disabled = false;
-    byId("dashboard-message").textContent = "Could not sign out. Try again.";
-    byId("dashboard-message").hidden = false;
+    candidateFeedback.show("dashboard-message", "Could not sign out. Try again.");
   }
 });
 
@@ -146,8 +157,7 @@ byId("sign-out").addEventListener("click", async () => {
     byId("account-name").textContent = user.username;
     await loadDashboard();
   } catch (error) {
-    byId("dashboard-message").textContent = error.message || "Could not load your assessments.";
-    byId("dashboard-message").hidden = false;
+    dashboardMessage("Could not load your assessments. Try again.");
     byId("active-list").replaceChildren();
   }
 })();

@@ -63,13 +63,10 @@ h2 { margin: 0; color: #122745; font-size: clamp(28px, 2.5vw, 36px); line-height
 .password-toggle svg { width: 20px; height: 20px; }
 .password-toggle:hover { color: #0d57a7; }
 .password-toggle:focus-visible, .sign-in-button:focus-visible { outline: 3px solid #9bc8ff; outline-offset: 3px; }
-.field-error { margin: 7px 0 0; color: #a32138; font-size: 13px; }
 .sign-in-button { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 52px; margin-top: 30px; border: 0; border-radius: 9px; background: #0b58ad; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: background .15s, transform .15s; }
 .sign-in-button:hover { background: #084a94; }
 .sign-in-button:active { transform: translateY(1px); }
 .sign-in-button span { font-size: 21px; line-height: 1; }
-.form-message { margin: 17px 0 0; padding: 12px 14px; border: 1px solid #c7ddf7; border-radius: 8px; background: #f0f7ff; color: #17477d; font-size: 13px; line-height: 1.5; }
-.form-message.error { border-color: #f0c6cd; background: #fff5f6; color: #98263a; }
 .signed-in-panel { padding: 22px; border: 1px solid #c7ddf7; border-radius: 10px; background: #f0f7ff; }
 .signed-in-label { margin: 0 0 10px; color: #0d5bbb; font-size: 11px; font-weight: 800; letter-spacing: .17em; }
 .signed-in-user { margin: 0; color: #122745; font-size: 21px; font-weight: 700; }
@@ -99,3 +96,4 @@ h2 { margin: 0; color: #122745; font-size: clamp(28px, 2.5vw, 36px); line-height
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; }
 }
+#form-message:not(:empty), #sign-out-message:not(:empty) { margin-top: 16px; }

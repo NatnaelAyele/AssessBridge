@@ -9,7 +9,8 @@ window.assessbridgeMedia = { stream: () => mediaStream };
 
 async function roomRequest(path, options = {}) {
   const headers = { ...(options.headers || {}), ...await window.assessbridgeSeb.headers() };
-  return fetch(path, { credentials: "same-origin", ...options, headers });
+  try { return await fetch(path, { credentials: "same-origin", ...options, headers }); }
+  catch { throw new Error("Could not reach AssessBridge. Reconnect and try again."); }
 }
 
 function showPanel(id) {
@@ -22,8 +23,7 @@ function setDeviceStatus(kind, text, state) {
 }
 
 function setDeviceError(message) {
-  byId("device-error").textContent = message;
-  byId("device-error").hidden = !message;
+  candidateFeedback.show("device-error", message);
 }
 
 function mediaReady() {
@@ -52,7 +52,7 @@ function stopMedia() {
 
 function showError(message) {
   stopMedia();
-  byId("room-error-message").textContent = message;
+  candidateFeedback.show("room-error-message", message);
   showPanel("room-error");
 }
 
@@ -197,7 +197,7 @@ byId("continue-devices").addEventListener("click", async () => {
 
 byId("agree").addEventListener("change", () => {
   byId("continue-button").disabled = !byId("agree").checked;
-  byId("consent-error").hidden = true;
+
 });
 
 byId("consent-form").addEventListener("submit", async (event) => {
@@ -221,19 +221,22 @@ byId("consent-form").addEventListener("submit", async (event) => {
       checkAvailability();
     }
   } catch (error) {
-    byId("consent-error").textContent = error.message;
-    byId("consent-error").hidden = false;
+    candidateFeedback.show("consent-error", error.message);
   } finally {
     button.disabled = !byId("agree").checked;
     button.innerHTML = 'Agree and continue <span aria-hidden="true">→</span>';
   }
 });
 
-roomRequest("/api/candidate/exam-room")
+// Device/identity/attempt controllers are later deferred scripts. Even a cached
+// or local response must wait until those controllers have finished loading.
+const roomScriptsReady = document.readyState === 'complete' ? Promise.resolve()
+  : new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
+roomScriptsReady.then(() => roomRequest("/api/candidate/exam-room"))
   .then(async (response) => {
     if (!response.ok) {
       const detail = (await response.json().catch(() => ({}))).detail;
-      throw new Error(typeof detail === "string" ? detail : "Could not load your assessment. Please try again.");
+      throw new Error(candidateFeedback.serverError(response, { detail }, "Could not load your assessment. Try again."));
     }
     return response.json();
   })

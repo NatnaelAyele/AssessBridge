@@ -146,3 +146,6 @@ with mysql.connector.connect(**DB_CONFIG) as connection:
     cursor.close()
 
 print("Database schema is ready.")
+
+from migrate_companies import migrate
+migrate()

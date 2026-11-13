@@ -1,0 +1,49 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Create candidate account | AssessBridge</title>
+    <link rel="stylesheet" href="/css/candidate.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/exam-entry.css?v=20261112-feedback" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/account-feedback.js?v=20261112" defer></script>
+    <script src="/js/register.js?v=20261112-feedback" defer></script>
+  </head>
+  <body>
+    <main class="entry-shell registration-shell">
+      <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span><span>AssessBridge</span></a>
+      <div class="entry-heading">
+        <p class="eyebrow">CANDIDATE ACCOUNT</p>
+        <h1>Create your account</h1>
+        <p>Use the email address that receives your exam invitations. We’ll send a verification link before you can sign in.</p>
+      </div>
+      <div id="account-notifications"></div>
+      <section class="entry-card" aria-labelledby="register-title">
+        <h2 id="register-title">Register with email</h2>
+        <form id="register-form" novalidate>
+          <div class="field"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" maxlength="254" required /></div>
+          <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="12" required /><small class="field-hint">At least 12 characters.</small></div>
+          <div class="field"><label for="confirm-password">Confirm password</label><input id="confirm-password" type="password" autocomplete="new-password" required /></div>
+          <button class="primary-button" type="submit">Create account</button>
+        </form>
+        <div id="register-message"></div>
+        <div id="registered-panel" hidden></div>
+        <div class="registration-footer">
+          <p>Already registered? <a href="/">Sign in</a></p>
+          <button id="show-resend" class="text-button" type="button" aria-expanded="false" aria-controls="resend-panel">Need a new verification link?</button>
+        </div>
+        <div id="resend-panel" class="resend-panel" hidden>
+          <h3>Resend verification email</h3>
+          <form id="resend-form" novalidate>
+            <div class="field"><label for="resend-email">Email address</label><input id="resend-email" type="email" autocomplete="email" required /></div>
+            <div class="field"><label for="resend-password">Password</label><input id="resend-password" type="password" autocomplete="current-password" required /></div>
+            <button class="secondary-button" type="submit">Resend link</button>
+          </form>
+          <div id="resend-message"></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

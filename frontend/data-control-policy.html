@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Data Control | AssessBridge</title><link rel="stylesheet" href="/css/policy.css" /></head>
+<body><main>
+  <div class="brand">AssessBridge</div><p class="label">CURRENT DEVELOPMENT NOTICE</p><h1>Data Control</h1>
+  <p>The identity check runs only after consent and the camera and microphone check, when you capture your photo ID card, capture your face, and select Check identity. You may retake images before sending them. If the card name or face cannot be matched, you can try again. The exam cannot start until the check passes.</p>
+  <p>The captured card and camera images are encrypted in MySQL and linked to your candidate account and exam invitation. Each retry records its result, stage, time, and matching scores without keeping another image copy. The assessment organizer sees the latest check status, but the current employer page does not display the images. Images are cleared after 30 days in this development setup; check records may remain.</p>
+  <p>Recording begins only when you select <strong>Start exam</strong>. Both video and audio are required for the current monitored exam flow. You may exit Safe Exam Browser at any time; exiting after Start exam and before submission disqualifies that attempt.</p>
+  <p>Each uploaded piece is linked by the server to your candidate account, invitation, and exam session. MySQL stores the links, timestamps, sizes, and integrity checksums. The media files are encrypted and kept outside the public website. Only the assessment's employer personnel can open playback in the current interface; recording access is logged. Missing pieces and interrupted recording parts remain marked incomplete. Automated monitoring stores the exam policy, model versions, observation timestamps, coverage information, and references to protected recordings. A fixed encrypted copy of the verified camera image is used for identity continuity and is removed after the configured recording retention period. Monitoring flags do not change your score or disqualify the exam; adverse decisions require human review.</p>
+  <p>The development retention setting is 30 days. After that, media files are removed automatically; access audit records and exam results are retained separately. Production retention and any formal access or deletion requests must be agreed with the participating employer before real assessments use recording.</p>
+</main></body>
+</html>

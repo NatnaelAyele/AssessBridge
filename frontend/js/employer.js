@@ -17,17 +17,37 @@ let assessmentPage = 1;
 let assessmentTotal = 0;
 let assessmentListRequest = 0;
 let detailRequest = 0;
-let clearEditorOnDialogClose = false;
+const employerFeedback = AssessBridgeFeedback.create({ notificationHost: '#employer-notifications' });
+const employerNotices = employerFeedback.scope('employer');
+let editorFeedback = employerFeedback.scope('editor');
+let listFeedback = employerFeedback.scope('assessment-list');
+let detailFeedback = employerFeedback.scope('assessment-detail');
+let rosterFieldSequence = 0;
+function editorError(text, step, input) { return Object.assign(new Error(text), { step, input }); }
+function fieldError(input, text, validate) {
+  const id = `field-${input.id || (input.dataset.feedbackId ||= ++rosterFieldSequence)}`;
+  if (!text) { editorFeedback.clear(id); return; }
+  editorFeedback.fieldError({ id, input, target: input.closest('.form-field, td') || input.parentElement, text, validate });
+}
+function showEditorError(error) {
+  setFeedback(byId('review-readiness'), '', '');
+  setFeedback(byId('invite-status'), '', '');
+  if (error.step) showStep(error.step);
+  if (error.input) {
+    const input = typeof error.input === 'string' ? byId(error.input) : error.input;
+    fieldError(input, error.message, () => { try { invitationPayload(); return true; } catch (next) { return next.input !== error.input; } });
+    input.focus();
+  } else setFeedback(byId(error.step === 'questions' ? 'question-message' : error.step === 'roster' ? 'roster-status' : 'invite-status'), error.message, 'error');
+}
 
 function byId(id) { return document.getElementById(id); }
 function value(id) { return byId(id).value.trim(); }
 function label(text, fallback = "Not entered") { return text || fallback; }
 function selectedChoices(selector) { return [...document.querySelectorAll(`${selector}:checked`)].map((input) => input.value); }
-function setFeedback(element, message, tone) {
-  element.textContent = message;
-  element.hidden = !message;
-  if (tone) element.dataset.tone = tone;
-  else delete element.dataset.tone;
+function setFeedback(element, message, tone, action) {
+  const scope = element.id === 'assessment-filter-error' ? listFeedback : editorFeedback;
+  if (!message) return scope.clear(element.id);
+  return scope.show({ id: element.id, target: element, text: message, tone: tone || 'info', action });
 }
 
 function setEditorLocked(locked) {
@@ -45,7 +65,7 @@ function candidateRoster() {
     const name = row.querySelector(".roster-name").value.trim();
     const emailInput = row.querySelector(".roster-email");
     const email = emailInput.value.trim();
-    return name && email && emailInput.checkValidity() ? { name, email } : null;
+    return name && email && emailInput.checkValidity() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? { name, email } : null;
   }).filter(Boolean);
 }
 
@@ -58,19 +78,22 @@ function updateRoster() {
     if (name && emailInput.value.trim() && emailInput.checkValidity()) addRosterRow();
   }
 
-  let incomplete = 0;
+  const seenEmails = new Set();
   for (const row of rosterRows()) {
-    const nameInput = row.querySelector(".roster-name");
-    const emailInput = row.querySelector(".roster-email");
-    const name = nameInput.value.trim();
-    const email = emailInput.value.trim();
-    const hasContent = Boolean(name || email);
-    if (hasContent && (!name || !email || !emailInput.checkValidity())) incomplete += 1;
-    nameInput.setAttribute("aria-invalid", String(Boolean(email && !name)));
-    emailInput.setAttribute("aria-invalid", String(Boolean(name && (!email || !emailInput.checkValidity()))));
-    row.querySelector(".roster-remove").hidden = !hasContent;
+    const nameInput = row.querySelector('.roster-name');
+    const emailInput = row.querySelector('.roster-email');
+    const hasContent = Boolean(nameInput.value.trim() || emailInput.value.trim());
+    const emailValid = () => Boolean(emailInput.value.trim()) && emailInput.checkValidity()
+      && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim());
+    fieldError(nameInput, hasContent && !nameInput.value.trim() ? 'Enter the candidate name.' : '', input => Boolean(input.value.trim()));
+    const email = emailInput.value.trim().toLowerCase();
+    const duplicate = emailValid() && seenEmails.has(email);
+    fieldError(emailInput, hasContent && !emailValid() ? 'Enter a valid invitation email.' : duplicate ? 'Use a different email for each candidate.' : '',
+      () => emailValid() && rosterRows().filter(current => current.querySelector('.roster-email').value.trim().toLowerCase() === emailInput.value.trim().toLowerCase()).length === 1);
+    if (emailValid()) seenEmails.add(email);
+    row.querySelector('.roster-remove').hidden = !hasContent;
   }
-  setFeedback(byId("roster-status"), incomplete ? `${incomplete} ${incomplete === 1 ? "row needs" : "rows need"} a name and valid email.` : "", "error");
+  if (candidateRoster().length) setFeedback(byId('roster-status'), '', '');
 }
 
 function addRosterRow() {
@@ -102,6 +125,7 @@ function addRosterRow() {
 
   for (const input of [nameInput, emailInput]) input.addEventListener("input", updateRoster);
   remove.addEventListener("click", () => {
+    for (const input of row.querySelectorAll("input")) fieldError(input, "");
     row.remove();
     if (!rosterRows().length) addRosterRow();
     rosterRows().forEach((current, index) => {
@@ -134,7 +158,7 @@ function updateScheduleFeedback(required = false) {
   let tone = "";
   let invalidField = "";
   if (!start && !end) {
-    if (required) message = "Enter both access window dates in East Africa Time.";
+    if (required) { message = "Enter when the access window opens."; invalidField = "schedule-start"; }
   } else if (!start) {
     if (required) { message = "Enter when the access window opens."; invalidField = "schedule-start"; }
   } else if (Number.isNaN(startDate.getTime()) || startDate <= new Date()) {
@@ -152,10 +176,11 @@ function updateScheduleFeedback(required = false) {
     message = "Set a duration from 1 to 480 minutes in Basics & duration.";
   }
   if (message && !tone) tone = "error";
-  for (const id of ["schedule-start", "schedule-end"]) {
-    byId(id).setAttribute("aria-invalid", String(id === invalidField));
+  for (const id of ['schedule-start', 'schedule-end']) {
+    fieldError(byId(id), id === invalidField ? message : '');
   }
-  setFeedback(byId("schedule-status"), message, tone);
+  setFeedback(byId('schedule-status'), message && !invalidField ? message : '', tone);
+  if (required && invalidField) byId(invalidField).focus();
   return tone !== "error" && (start && end ? true : !required);
 }
 
@@ -242,7 +267,10 @@ function appendHighlighted(parent, source, search) {
 
 async function loadAssessments(page = assessmentPage, selectId = selectedAssessmentId) {
   const request = ++assessmentListRequest;
-  const message = byId("assessment-list-message");
+  ++detailRequest; detailFeedback.dispose();
+  byId("selected-assessment").hidden = true;
+  listFeedback.dispose();
+  const scope = listFeedback = employerFeedback.scope("assessment-list");
   let filters;
   try {
     filters = assessmentFilters();
@@ -252,13 +280,12 @@ async function loadAssessments(page = assessmentPage, selectId = selectedAssessm
     return;
   }
   filters.set("page", String(page));
-  message.dataset.tone = "neutral";
-  message.textContent = "Loading saved assessments…";
+  scope.show({ id: "list", target: "#assessment-list-message", text: "Loading assessments...", tone: "loading" });
   try {
     const response = await fetch(`/api/employer/assessments?${filters}`, { credentials: "same-origin" });
     if (!response.ok) throw new Error("Could not load saved assessments.");
     const data = await response.json();
-    if (request !== assessmentListRequest) return;
+    if (request !== assessmentListRequest || !scope.active) return;
     const lastPage = Math.max(1, Math.ceil(data.total / data.page_size));
     if (page > lastPage) return loadAssessments(lastPage, selectId);
     assessmentPage = data.page;
@@ -269,7 +296,8 @@ async function loadAssessments(page = assessmentPage, selectId = selectedAssessm
     byId("assessment-page").textContent = `Page ${page} of ${lastPage}`;
     byId("assessments-previous").disabled = page <= 1;
     byId("assessments-next").disabled = page * data.page_size >= data.total;
-    message.textContent = data.total ? "" : filters.size > 1 ? "No assessments match these filters." : "No saved assessments yet. Create one in the editor and send invitations to save it.";
+    scope.clear("list");
+    if (!data.total) scope.show({ id: "list", target: "#assessment-list-message", tone: "neutral", text: filters.size > 1 ? "No assessments match these filters." : "No saved assessments." });
     const search = value("assessment-search");
     for (const item of data.items) {
       const button = document.createElement("button");
@@ -300,9 +328,8 @@ async function loadAssessments(page = assessmentPage, selectId = selectedAssessm
       byId("selected-assessment").hidden = true;
     }
   } catch (error) {
-    if (request !== assessmentListRequest) return;
-    message.textContent = error.message || "Could not load saved assessments.";
-    message.dataset.tone = "error";
+    if (request !== assessmentListRequest || !scope.active) return;
+    scope.show({ id: "list", target: "#assessment-list-message", text: "Could not load assessments. Try again.", tone: "error", action: { label: "Retry", onClick: () => loadAssessments(page, selectId) } });
   }
 }
 
@@ -323,25 +350,24 @@ byId("assessment-clear-filters").addEventListener("click", () => {
 
 async function selectAssessment(id, scrollToDetail = false) {
   const request = ++detailRequest;
-  const message = byId("assessment-list-message");
-  message.dataset.tone = "neutral";
-  message.textContent = "Loading assessment details…";
+  detailFeedback.dispose();
+  const scope = detailFeedback = employerFeedback.scope("assessment-detail");
+  scope.show({ id: "detail", target: "#assessment-detail-message", text: "Loading assessment details...", tone: "loading" });
   try {
     const response = await fetch(`/api/employer/assessments/${id}`, { credentials: "same-origin" });
     if (!response.ok) throw new Error("Could not load this assessment.");
     const assessment = await response.json();
-    if (request !== detailRequest) return;
+    if (request !== detailRequest || !scope.active) return;
     selectedAssessmentId = id;
     document.querySelectorAll(".assessment-list-item").forEach((button) => {
       button.classList.toggle("is-selected", Number(button.dataset.assessmentId) === id);
     });
     renderDetail(assessment);
-    message.textContent = "";
+    scope.clear("detail");
     if (scrollToDetail) byId("selected-assessment").scrollIntoView({ behavior: "instant", block: "start" });
   } catch (error) {
-    if (request === detailRequest) {
-      message.textContent = error.message || "Could not load this assessment.";
-      message.dataset.tone = "error";
+    if (request === detailRequest && scope.active) {
+      scope.show({ id: "detail", target: "#assessment-detail-message", text: "Could not load this assessment. Try again.", tone: "error", action: { label: "Retry", onClick: () => selectAssessment(id, scrollToDetail) } });
     }
   }
 }
@@ -353,23 +379,32 @@ function invitationPayload() {
   const incomplete = rosterRows().some((row) => {
     const name = row.querySelector(".roster-name").value.trim();
     const emailInput = row.querySelector(".roster-email");
-    return (name || emailInput.value.trim()) && (!name || !emailInput.value.trim() || !emailInput.checkValidity());
+    return (name || emailInput.value.trim()) && (!name || !emailInput.value.trim() || (!emailInput.checkValidity() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim())));
   });
-  if (!title) throw new Error("Enter an assessment title in Basics & duration.");
-  if (/[\r\n]/.test(title)) throw new Error("The assessment title must be one line.");
-  if (!Number.isInteger(duration) || duration < 1 || duration > 480) throw new Error("Enter a duration from 1 to 480 minutes.");
-  if (!questions.length) throw new Error("Add at least one question and answer key.");
-  if (incomplete) throw new Error("Complete or remove every candidate roster row.");
-  if (!candidates.length) throw new Error("Add at least one candidate with a valid email.");
-  if (new Set(candidates.map((candidate) => candidate.email.toLowerCase())).size !== candidates.length) throw new Error("Each candidate email must be unique.");
+  if (!title) throw editorError('Enter an assessment title.', 'basics', 'assessment-title');
+  if (/[\r\n]/.test(title)) throw editorError('Use one line for the assessment title.', 'basics', 'assessment-title');
+  if (!Number.isInteger(duration) || duration < 1 || duration > 480) throw editorError('Enter a duration from 1 to 480 minutes.', 'basics', 'assessment-duration');
+  if (!questions.length) throw editorError('Add at least one question and answer key.', 'questions', null);
+  if (incomplete) {
+    const row = rosterRows().find(row => { const n = row.querySelector('.roster-name'); const e = row.querySelector('.roster-email'); return (n.value.trim() || e.value.trim()) && (!n.value.trim() || !e.value.trim() || !e.checkValidity() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.value.trim())); });
+    const name = row.querySelector('.roster-name');
+    throw editorError(name.value.trim() ? 'Enter a valid invitation email.' : 'Enter the candidate name.', 'roster', name.value.trim() ? row.querySelector('.roster-email') : name);
+  }
+  if (!candidates.length) throw editorError('Add a candidate name and invitation email.', 'roster', null);
+  if (candidates.length > 200) throw editorError('An assessment can invite up to 200 candidates.', 'roster', null);
+  if (new Set(candidates.map(candidate => candidate.email.toLowerCase())).size !== candidates.length) {
+    const seen = new Set();
+    const duplicate = rosterRows().map(row => row.querySelector('.roster-email')).find(input => { const email = input.value.trim().toLowerCase(); if (!email) return false; if (seen.has(email)) return true; seen.add(email); return false; });
+    throw editorError('Use a different email for each candidate.', 'roster', duplicate);
+  }
   const start = value("schedule-start");
   const end = value("schedule-end");
-  if (!start || !end) throw new Error("Enter both access window dates in East Africa Time.");
+  if (!start || !end) throw editorError('Enter both access window dates.', 'schedule', !start ? 'schedule-start' : 'schedule-end');
   const startDate = new Date(`${start}+03:00`);
   const endDate = new Date(`${end}+03:00`);
-  if (Number.isNaN(startDate.getTime()) || startDate <= new Date()) throw new Error("Choose a future access window start.");
-  if (Number.isNaN(endDate.getTime()) || endDate <= startDate) throw new Error("The access window must close after it opens.");
-  if (endDate - startDate < duration * 60 * 1000) throw new Error("The access window must allow the full assessment duration.");
+  if (Number.isNaN(startDate.getTime()) || startDate <= new Date()) throw editorError('Choose a future access window start.', 'schedule', 'schedule-start');
+  if (Number.isNaN(endDate.getTime()) || endDate <= startDate) throw editorError('The access window must close after it opens.', 'schedule', 'schedule-end');
+  if (endDate - startDate < duration * 60 * 1000) throw editorError('The access window must allow the full assessment duration.', 'schedule', 'schedule-end');
   return {
     request_key: invitationRequestKey,
     title,
@@ -385,84 +420,102 @@ function invitationPayload() {
   };
 }
 
-byId("send-invitations").addEventListener("click", async () => {
-  const button = byId("send-invitations");
-  const status = byId("invite-status");
+async function sendInvitations() {
+  const button = byId('send-invitations');
   if (button.disabled) return;
+  const scope = editorFeedback;
+  const retrying = Boolean(submittedPayload);
   let payload;
-  try {
-    payload = invitationPayload();
-    if (submittedPayload && JSON.stringify(payload) !== submittedPayload) {
-      throw new Error("This invitation request was already submitted. Restore its details before retrying.");
-    }
-  } catch (error) {
-    setFeedback(status, error.message, "error");
-    setFeedback(byId("review-readiness"), "", "");
-    updateScheduleFeedback();
-    return;
-  }
+  try { payload = submittedPayload ? JSON.parse(submittedPayload) : invitationPayload(); }
+  catch (error) { showEditorError(error); return; }
   button.disabled = true;
-  button.textContent = "Sending…";
-  button.dataset.state = "sending";
-  button.setAttribute("aria-busy", "true");
-  setFeedback(status, "", "");
+  byId('new-assessment').disabled = true;
+  button.textContent = 'Sending...';
+  button.dataset.state = 'sending';
+  button.setAttribute('aria-busy', 'true');
+  scope.clear('review-readiness');
+  // Retain the exact request even if acknowledgement is lost after a save.
+  submittedPayload = JSON.stringify(payload);
+  setEditorLocked(true);
+  scope.show({ id: 'invite-status', target: '#invite-status', text: 'Sending invitations...', tone: 'loading' });
+  let completed = false;
+  let safeError = "Could not confirm invitation delivery. Retry to check and send the remaining invitations.";
+  let retryAction = { label: 'Retry invitations', onClick: sendInvitations };
   try {
-    const response = await fetch("/api/employer/invitations", {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const response = await fetch('/api/employer/invitations', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: submittedPayload,
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!scope.active) return;
     if (!response.ok) {
-      if (response.status === 503 && result.detail === "Email delivery is not configured") {
-        throw new Error("Email delivery is not configured yet. No invitations were sent.");
+      const safe = {
+        'Email delivery is not configured': 'Email delivery is unavailable. Configure email delivery, then retry.',
+        'SEB invitation setup is incomplete': 'SEB invitation setup is unavailable. Check the setup, then retry.',
+        'Invitation request does not match the saved assessment': 'This request differs from the saved assessment. Open Assessment detail to check its invitations.',
+        'Results are published. Invitations cannot be changed.': 'Results are published. Invitations cannot be changed.',
+      };
+      // Validation and setup checks occur before saving. A new draft can be corrected safely.
+      if (!retrying && !invitationResult && (response.status === 422 || ['Email delivery is not configured', 'SEB invitation setup is incomplete'].includes(result.detail))) {
+        submittedPayload = null;
+        setEditorLocked(false);
       }
-      throw new Error(typeof result.detail === "string" ? result.detail : "Could not send invitations. Check the assessment details and try again.");
+      safeError = safe[result.detail] || (response.status === 422
+        ? 'Check the assessment details and schedule, then try again.'
+        : response.status === 401 || response.status === 403 ? 'Your session cannot send invitations. Sign in again.'
+          : 'Could not confirm invitation delivery. Retry to check and send the remaining invitations.');
+      const scheduleStarted = response.status === 422 && Array.isArray(result.detail)
+        && result.detail.some(item => typeof item.msg === 'string' && item.msg.includes('Assessment start must be in the future'));
+      if (retrying && scheduleStarted) {
+        safeError = 'The access window has started. Check invitation delivery in Assessment detail.';
+        retryAction = { label: 'View assessment details', onClick: () => showTab('detail') };
+      }
+      throw new Error(safeError);
     }
-    submittedPayload = JSON.stringify(payload);
+    if (!Number.isInteger(result.sent) || !Number.isInteger(result.failed) || !Number.isInteger(result.pending)
+        || result.sent + result.failed + result.pending !== payload.candidates.length || !result.assessment_id
+        || [result.sent, result.failed, result.pending].some(count => count < 0)) {
+      throw new Error('Could not confirm invitation delivery. Retry to check and send the remaining invitations.');
+    }
     invitationResult = result;
-    setEditorLocked(true);
-    const badge = byId("editor-state");
-    badge.textContent = "Saved assessment";
-    badge.dataset.tone = "success";
     selectedAssessmentId = result.assessment_id;
+    byId('editor-state').textContent = 'Saved assessment';
+    byId('editor-state').dataset.tone = 'success';
     loadAssessments(1, result.assessment_id);
-    if (result.sent === payload.candidates.length && !result.failed && !result.pending) {
-      button.textContent = "Sent";
-      button.dataset.state = "sent";
-      setFeedback(status, "", "");
-      setFeedback(byId("review-readiness"), "", "");
-      byId("send-confirmation-message").textContent = `“${payload.title}” is saved. Calendar invitations were sent to all ${result.sent} candidates.`;
-      clearEditorOnDialogClose = true;
-      byId("send-confirmation").showModal();
+    completed = result.sent === payload.candidates.length && !result.failed && !result.pending;
+    if (completed) {
+      resetEditor();
+      employerNotices.notify({ id: 'invitations-sent', text: 'Assessment saved. Invitations sent.' });
     } else {
-      button.textContent = result.failed ? "Retry failed invitations" : "Retry invitations";
-      button.dataset.state = "error";
-      setFeedback(status, `Assessment saved, but only ${result.sent} of ${payload.candidates.length} invitations were sent. ${result.failed} failed and ${result.pending} remain pending. Retry to send the remaining invitations.`, "error");
-      setFeedback(byId("review-readiness"), "", "");
+      scope.show({ id: 'invite-status', target: '#invite-status', tone: 'error',
+        text: `Assessment saved. ${result.sent} of ${payload.candidates.length} invitations sent.\n${result.failed} failed. ${result.pending} pending.`,
+        action: { label: 'Retry failed invitations', onClick: sendInvitations } });
     }
   } catch (error) {
-    button.textContent = invitationResult?.failed || invitationResult?.pending ? "Retry failed invitations" : "Confirm and send invitations";
-    button.dataset.state = "error";
-    setFeedback(status, error.message || "Could not send invitations. Please try again.", "error");
+    if (scope.active) scope.show({ id: 'invite-status', target: '#invite-status', tone: 'error',
+      text: safeError,
+      action: retryAction });
   } finally {
-    button.removeAttribute("aria-busy");
-    if (!invitationResult || invitationResult.failed || invitationResult.pending) button.disabled = false;
+    button.removeAttribute('aria-busy');
+    byId('new-assessment').disabled = false;
+    if (!completed && scope.active) {
+      button.textContent = submittedPayload ? 'Retry failed invitations' : 'Confirm and send invitations';
+      button.dataset.state = 'error';
+      button.disabled = false;
+    }
   }
-});
+}
+byId('send-invitations').addEventListener('click', sendInvitations);
 
-byId("close-send-confirmation").addEventListener("click", () => byId("send-confirmation").close());
-byId("send-confirmation").addEventListener("close", () => {
-  if (!clearEditorOnDialogClose) return;
-  clearEditorOnDialogClose = false;
-  resetEditor();
-});
-byId("view-sent-assessment").addEventListener("click", () => {
-  byId("send-confirmation").close();
-  showTab("detail");
-});
-
+let currentEmployerTab = null;
 function showTab(tab) {
   if (!tabs.includes(tab)) return;
+  if (currentEmployerTab === 'detail' && tab !== 'detail') {
+    ++assessmentListRequest; ++detailRequest; clearTimeout(assessmentFilterTimer);
+    listFeedback.dispose(); detailFeedback.dispose();
+  }
+  if (currentEmployerTab === 'editor' && tab !== 'editor') editorFeedback.clearAll();
+  if (!['review', 'results'].includes(tab)) window.employerReview?.deactivate();
+  currentEmployerTab = tab;
   for (const button of document.querySelectorAll("[data-tab]")) {
     const selected = button.dataset.tab === tab;
     button.classList.toggle("is-active", selected);
@@ -550,7 +603,7 @@ function renderSummary() {
     const name = row.querySelector(".roster-name").value.trim();
     const emailInput = row.querySelector(".roster-email");
     const email = emailInput.value.trim();
-    return (name || email) && (!name || !email || !emailInput.checkValidity());
+    return (name || email) && (!name || !email || (!emailInput.checkValidity() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim())));
   }).length;
   byId("summary-title").textContent = label(value("assessment-title"));
   byId("summary-duration").textContent = value("assessment-duration") ? `${value("assessment-duration")} minutes` : "Not entered";
@@ -578,20 +631,20 @@ function renderSummary() {
     item.textContent = `${candidate.name} · ${candidate.email}`;
     candidateList.append(item);
   }
-  if (!questions.length) questionList.append(document.createElement("li")).textContent = "No questions added.";
-  if (!candidates.length) candidateList.append(document.createElement("li")).textContent = "No candidates added.";
+  if (!questions.length) questionList.appendChild(document.createElement("li")).textContent = "No questions added.";
+  if (!candidates.length) candidateList.appendChild(document.createElement("li")).textContent = "No candidates added.";
   byId("summary-description").textContent = `Description: ${label(value("assessment-description"), "None")}`;
   byId("summary-rules-text").textContent = `Prohibited items: ${prohibitedItems.length ? prohibitedItems.join(", ") : "None selected"}`;
   byId("summary-identity-text").textContent = `Identity requirement: ${identityLabel}`;
   const readiness = byId("review-readiness");
-  if (invitationResult) {
+  if (submittedPayload || invitationResult) {
     setFeedback(readiness, "", "");
   } else {
     try {
       invitationPayload();
       setFeedback(readiness, "", "");
     } catch (error) {
-      setFeedback(readiness, `Before sending: ${error.message}`, "error");
+      setFeedback(readiness, error.message, "error", { label: "Fix setup", onClick: () => showEditorError(error) });
     }
   }
 }
@@ -700,19 +753,30 @@ document.querySelectorAll("[data-open-tab]").forEach((button) => {
 document.querySelectorAll("[data-open-editor]").forEach((button) => {
   button.addEventListener("click", () => showTab("editor"));
 });
-byId("new-assessment").addEventListener("click", () => {
+let discardEditorDialog = null;
+byId("new-assessment").addEventListener("click", async () => {
+  if (byId("send-invitations").disabled) return;
   const draftHasContent = questions.length || rosterRows().some((row) => row.querySelector(".roster-name").value.trim() || row.querySelector(".roster-email").value.trim()) ||
     selectedChoices(".prohibited-item").length ||
     [...document.querySelectorAll(".mcq-option")].some((input) => input.value.trim()) || [
     "assessment-title", "assessment-duration", "assessment-description", "assessment-reference",
     "schedule-start", "schedule-end", "question-prompt", "question-key",
   ].some((id) => value(id));
-  if (draftHasContent && !window.confirm("Clear the current editor and start a new assessment?")) return;
+  if (discardEditorDialog) return;
+  if (draftHasContent) {
+    discardEditorDialog = employerNotices.confirm({ id: 'discard-editor', title: 'Start a new assessment?',
+      text: 'The current editor will be cleared. Saved assessments and sent invitations are kept.',
+      confirmLabel: 'Clear editor', cancelLabel: 'Keep editing', destructive: true });
+    const accepted = await discardEditorDialog.result; discardEditorDialog = null;
+    if (!accepted || byId('send-invitations').disabled) return;
+  }
   resetEditor();
   showTab("editor");
 });
 
 function resetEditor() {
+  editorFeedback.dispose();
+  editorFeedback = employerFeedback.scope("editor");
   for (const id of [
     "assessment-title", "assessment-duration", "assessment-description", "assessment-reference",
     "schedule-start", "schedule-end",
@@ -765,60 +829,51 @@ function syncQuestionType() {
   const isMultipleChoice = value("question-type") === "multiple_choice";
   byId("written-answer-fields").hidden = isMultipleChoice;
   byId("multiple-choice-fields").hidden = !isMultipleChoice;
-  byId("question-message").hidden = true;
+  setFeedback(byId("question-message"), "", "");
+  for (const id of ["question-prompt", "question-key", "mcq-option-a", "mcq-option-b", "mcq-option-c", "mcq-option-d"]) fieldError(byId(id), "");
 }
 byId("question-type").addEventListener("change", syncQuestionType);
-byId("add-question").addEventListener("click", () => {
-  const prompt = value("question-prompt");
-  const type = value("question-type");
-  const message = byId("question-message");
-  if (!prompt) {
-    message.textContent = "Enter a question prompt first.";
-    message.hidden = false;
-    byId("question-prompt").focus();
-    return;
+byId('add-question').addEventListener('click', () => {
+  editorFeedback.clear('question-message');
+  const prompt = value('question-prompt');
+  const type = value('question-type');
+  const rules = [[byId('question-prompt'), input => Boolean(input.value.trim()) && input.value.length <= 5000, 'Enter a question, up to 5,000 characters.']];
+  let options, chosen;
+  if (type === 'multiple_choice') {
+    options = [...document.querySelectorAll('.mcq-option')].map(input => input.value.trim());
+    chosen = document.querySelector('input[name="correct-option"]:checked');
+    for (const id of ['mcq-option-a', 'mcq-option-b']) rules.push([byId(id), input => Boolean(input.value.trim()), 'Enter an answer option.']);
+  } else rules.push([byId('question-key'), input => Boolean(input.value.trim()) && input.value.length <= 5000, 'Enter an answer key, up to 5,000 characters.']);
+  let first;
+  for (const [input, valid, text] of rules) {
+    fieldError(input, valid(input) ? '' : text, valid);
+    if (!valid(input)) first ||= input;
   }
-
+  if (first) { first.focus(); return; }
+  if (questions.length >= 200) return setFeedback(byId('question-message'), 'An assessment can have up to 200 questions.', 'error');
   let question;
-  if (type === "multiple_choice") {
-    const options = [...document.querySelectorAll(".mcq-option")].map((input) => input.value.trim());
-    const chosen = document.querySelector('input[name="correct-option"]:checked');
+  if (type === 'multiple_choice') {
     const filled = options.filter(Boolean);
-    if (!options[0] || !options[1]) {
-      message.textContent = "Enter at least options A and B.";
-      message.hidden = false;
-      return;
-    }
-    if (new Set(filled.map((option) => option.toLocaleLowerCase())).size !== filled.length) {
-      message.textContent = "Each answer option must be different.";
-      message.hidden = false;
-      return;
+    if (new Set(filled.map(option => option.toLocaleLowerCase())).size !== filled.length) {
+      return setFeedback(byId('question-message'), 'Each answer option must be different.', 'error');
     }
     if (!chosen || !options[Number(chosen.value)]) {
-      message.textContent = "Mark a filled option as the correct answer.";
-      message.hidden = false;
+      setFeedback(byId('question-message'), 'Select a filled option as the correct answer.', 'error');
+      document.querySelector('input[name="correct-option"]').focus();
       return;
     }
     question = { type, prompt, options, correctIndex: Number(chosen.value) };
-    document.querySelectorAll(".mcq-option").forEach((input) => { input.value = ""; });
+    document.querySelectorAll('.mcq-option').forEach(input => { input.value = ''; });
     chosen.checked = false;
   } else {
-    const key = value("question-key");
-    if (!key) {
-      message.textContent = "Enter an answer key or expected answer.";
-      message.hidden = false;
-      byId("question-key").focus();
-      return;
-    }
-    question = { type: "written", prompt, key };
-    byId("question-key").value = "";
+    question = { type: 'written', prompt, key: value('question-key') };
+    byId('question-key').value = '';
   }
-
   questions.push(question);
-  byId("question-prompt").value = "";
-  message.hidden = true;
+  byId('question-prompt').value = '';
+  editorFeedback.clear('question-message');
   renderQuestions();
-  byId("question-prompt").focus();
+  byId('question-prompt').focus();
 });
 
 byId("logout-button").addEventListener("click", async () => {
@@ -829,8 +884,7 @@ byId("logout-button").addEventListener("click", async () => {
     if (!response.ok) throw new Error("Sign-out failed");
     window.location.assign("/");
   } catch {
-    byId("session-message").textContent = "Could not sign out. Please try again.";
-    byId("session-message").hidden = false;
+    employerNotices.show({ id: "session", target: "#session-message", text: "Could not sign out. Try again.", tone: "error" });
     button.disabled = false;
   }
 });
@@ -845,8 +899,7 @@ fetch("/api/auth/me", { credentials: "same-origin" })
     byId("account-name").textContent = user.username;
   })
   .catch(() => {
-    byId("session-message").textContent = "Could not confirm your session. Please refresh the page.";
-    byId("session-message").hidden = false;
+    employerNotices.show({ id: "session", target: "#session-message", text: "Could not confirm your session. Refresh the page.", tone: "error", action: { label: "Refresh", onClick: () => location.reload() } });
   });
 
 addRosterRow();

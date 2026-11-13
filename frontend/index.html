@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0d3a78" />
     <title>Sign in | AssessBridge</title>
-    <link rel="stylesheet" href="css/styles.css" />
-    <script src="js/login.js" defer></script>
+    <link rel="stylesheet" href="/css/styles.css?v=20261112-feedback" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
+    <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
+    <script src="/js/account-feedback.js?v=20261112" defer></script>
+    <script src="/js/login.js?v=20261112-feedback" defer></script>
   </head>
   <body>
     <main class="page-shell">
@@ -49,17 +52,17 @@
           <h2 id="login-heading">Sign in to your account</h2>
           <p class="login-description">Candidates use their registered email. Employer personnel and auditors use their username.</p>
 
+          <div id="account-notifications"></div>
           <form id="login-form" novalidate>
             <div class="field">
               <label for="username">Email or username</label>
-              <input id="username" name="username" type="text" autocomplete="username" placeholder="Candidate email or staff username" required aria-describedby="username-error" />
-              <p class="field-error" id="username-error" hidden>Please enter your email or username.</p>
+              <input id="username" name="username" type="text" autocomplete="username" placeholder="Candidate email or staff username" required />
             </div>
 
             <div class="field">
               <label for="password">Password</label>
               <div class="password-field">
-                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required aria-describedby="password-error" />
+                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
                 <button id="toggle-password" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"></path>
@@ -67,11 +70,10 @@
                   </svg>
                 </button>
               </div>
-              <p class="field-error" id="password-error" hidden>Please enter your password.</p>
             </div>
 
             <button class="sign-in-button" type="submit">Sign in <span aria-hidden="true">→</span></button>
-            <p id="form-message" class="form-message" role="status" aria-live="polite" hidden></p>
+            <div id="form-message"></div>
           </form>
 
           <div id="signed-in-panel" class="signed-in-panel" hidden>
@@ -79,7 +81,7 @@
             <p id="signed-in-user" class="signed-in-user"></p>
             <p id="signed-in-role" class="signed-in-role"></p>
             <button id="sign-out-button" class="sign-out-button" type="button">Sign out</button>
-            <p id="sign-out-message" class="field-error" role="status" hidden></p>
+            <div id="sign-out-message"></div>
           </div>
 
           <p class="access-note">New candidate? <a href="/register">Register with your email</a>.</p>
