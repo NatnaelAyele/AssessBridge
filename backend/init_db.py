@@ -149,3 +149,6 @@ print("Database schema is ready.")
 
 from migrate_companies import migrate
 migrate()
+
+from migrate_roster_removals import migrate as migrate_roster_removals
+migrate_roster_removals()

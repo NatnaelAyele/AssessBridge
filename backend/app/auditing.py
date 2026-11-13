@@ -100,7 +100,7 @@ def assessments(page=1, search="", audit="all", company_id=None):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         cursor.execute("""SELECT a.id,a.title,a.internal_reference,a.starts_at,a.ends_at,COUNT(i.id) AS candidate_count
-                          FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id=a.id"""
+                          FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id=a.id AND i.removed_at IS NULL"""
                        + (" WHERE " + " AND ".join(where) if where else "")
                        + " GROUP BY a.id ORDER BY a.created_at DESC,a.id DESC", tuple(params))
         items = cursor.fetchall()
@@ -259,7 +259,7 @@ def overview(company_id):
             cursor.execute("""SELECT i.id AS invitation_id,s.id,s.submitted_at,s.disqualified_at,s.interrupted_at,
                               EXISTS(SELECT 1 FROM assessment_review_decisions d WHERE d.session_id=s.id) AS reviewed
                               FROM assessment_invitations i LEFT JOIN assessment_exam_sessions s ON s.invitation_id=i.id
-                              WHERE i.assessment_id=%s ORDER BY i.id""", (exam['id'],))
+                              WHERE i.assessment_id=%s AND i.removed_at IS NULL ORDER BY i.id""", (exam['id'],))
             sessions = cursor.fetchall()
             counts = dict(candidates=len(sessions), ready=0, audited=0, review_pending=0, evidence_pending=0, changed=0, no_attempt=0, unfinished=0)
             for session in sessions:

@@ -404,7 +404,7 @@ def candidate_cards(assessment_id, employer_id):
         cursor.execute(
             """SELECT s.*,i.id AS invitation_id,i.candidate_name,i.candidate_email,i.delivery_status
                FROM assessment_invitations i LEFT JOIN assessment_exam_sessions s ON s.invitation_id=i.id
-               WHERE i.assessment_id=%s ORDER BY i.id FOR UPDATE""", (assessment_id,))
+               WHERE i.assessment_id=%s AND i.removed_at IS NULL ORDER BY i.id FOR UPDATE""", (assessment_id,))
         rows = cursor.fetchall()
         cards = []
         for row in rows:

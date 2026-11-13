@@ -41,7 +41,7 @@ def _state(cursor, assessment_id, lock=False):
     assessment = assessment_for_auditor(cursor, assessment_id, lock=lock)
     # Publication locks invitations, then sessions in a stable order. Review writes
     # lock the same sessions, preventing a decision change during approval.
-    cursor.execute("SELECT id,candidate_user_id FROM assessment_invitations WHERE assessment_id=%s ORDER BY id" + (" FOR UPDATE" if lock else ""), (assessment_id,))
+    cursor.execute("SELECT id,candidate_user_id FROM assessment_invitations WHERE assessment_id=%s AND removed_at IS NULL ORDER BY id" + (" FOR UPDATE" if lock else ""), (assessment_id,))
     invitations = cursor.fetchall()
     rows, versions, audited = [], [], 0
     for invitation in invitations:
