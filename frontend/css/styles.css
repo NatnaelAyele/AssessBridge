@@ -97,3 +97,13 @@ h2 { margin: 0; color: #122745; font-size: clamp(28px, 2.5vw, 36px); line-height
   *, *::before, *::after { transition-duration: .01ms !important; }
 }
 #form-message:not(:empty), #sign-out-message:not(:empty) { margin-top: 16px; }
+
+.login-recovery { display:flex; justify-content:flex-end; margin-top:-7px; font-size:13px; }
+.login-recovery a { color:#0b58ad; text-decoration:none; font-weight:600; padding:4px 0; }
+.login-recovery a:hover { text-decoration:underline; }
+.company-entry { margin-top:28px; padding:20px 0; border-top:1px solid #e0e8f3; border-bottom:1px solid #e0e8f3; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.company-entry-label { display:block; color:#75849b; font-size:10px; font-weight:700; letter-spacing:.12em; margin-bottom:5px; }
+.company-entry strong { display:block; font-size:13px; color:#263b59; font-weight:600; }
+.company-entry a { flex-shrink:0; color:#0b58ad; font-size:13px; font-weight:700; text-decoration:none; padding:10px 12px; border:1px solid #cbdcf0; border-radius:8px; background:#f7faff; }
+.company-entry a:hover { background:#edf4ff; border-color:#0b58ad; }
+@media(max-width:380px){.company-entry{align-items:flex-start;flex-direction:column}.company-entry a{width:100%;text-align:center}}

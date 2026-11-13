@@ -145,6 +145,66 @@
       el("history-detail-content").hidden = false;
     } catch (error) { if (serial === historyDetailSerial && scope.active) { el("history-detail-title").textContent = "Published results unavailable"; notice(scope, "history-detail-message", error.message, "error", { label: "Retry", onClick: () => openPublishedResults(id) }); } }
   }
+  let overviewFocus = null;
+  let overviewSerial = 0, overviewFeedback = feedback.scope('auditor-overview');
+  function overviewExam(exam) {
+    selectMainTab('auditing', false);
+    openExam(exam);
+  }
+  function overviewRow(host, values, labels) {
+    const row = node('tr');
+    values.forEach((value,index) => { const cell = node('td');cell.dataset.label=labels[index];if(value instanceof Node)cell.append(value);else cell.textContent=value;row.append(cell); });host.append(row);return row;
+  }
+  async function loadOverview() {
+    const serial=++overviewSerial, scope=overviewFeedback=feedback.scope('auditor-overview');
+    el('overview-content').hidden=true;el('overview-updated').textContent='';
+    notice(scope,'overview-message','Loading overview...','loading');
+    try {
+      const result=await api('/api/auditor/overview');if(serial!==overviewSerial||!scope.active)return;
+      el('overview-company').textContent=result.company;el('overview-updated').textContent=`Updated ${date(result.updated_at)}`;
+      for(const [id,key] of [['ready','ready_for_audit'],['review','awaiting_review'],['publish','ready_to_publish'],['published','published']])el(`overview-${id}-count`).textContent=result.totals[key];
+      const queue=el('overview-queue-rows');
+      const renderQueue=all=>{queue.replaceChildren();for(const exam of (all?result.queue:result.queue.slice(0,5)))overviewRow(queue,[exam.title,exam.internal_reference||'Not set',date(exam.ends_at),`${exam.ready} reports`,`${exam.audited} / ${exam.candidates}`,button('Open assessment',()=>overviewExam(exam))],['Assessment','Exam code','Closed on','Ready for audit','Audited','Action']);if(!result.queue.length)emptyRows(queue,'No reports ready for audit.',6);el('overview-queue-more').hidden=all||result.queue.length<=5;};
+      renderQueue(false);el('overview-queue-more').onclick=()=>renderQueue(true);
+      const publish=el('overview-publish-list');publish.replaceChildren();
+      for(const exam of result.ready_to_publish){const item=node('div'),details=node('div');details.append(node('strong','',exam.title),node('p','',`${exam.internal_reference||'No exam code'} / ${exam.candidates} candidates`));item.append(details,button('Review publication',()=>overviewExam(exam)));publish.append(item);}
+      if(!result.ready_to_publish.length)publish.append(node('p','review-muted','No assessments ready to publish.'));
+      const waiting=el('overview-waiting-rows');waiting.replaceChildren();
+      const pendingLabels={review_pending:n=>`${n} candidate ${n===1?'review':'reviews'} pending`,evidence_pending:n=>`Recording upload or processing pending for ${n} ${n===1?'candidate':'candidates'}`,changed:n=>`${n} ${n===1?'report changed':'reports changed'} after auditing`,no_attempt:n=>`${n} ${n===1?'candidate has':'candidates have'} no recorded attempt`,unfinished:n=>`${n} ${n===1?'attempt has':'attempts have'} not ended`,no_candidates:()=> 'No candidates assigned'};
+      for(const exam of result.waiting){const reasons=node('div','overview-pending');for(const [key,count]of Object.entries(exam.blockers)){const reason=node('span','',pendingLabels[key](count));reason.dataset.blocker=key;reasons.append(reason);}const row=overviewRow(waiting,[exam.title,exam.internal_reference||'Not set',reasons,button('Open assessment',()=>overviewExam(exam))],['Assessment','Exam code','Pending work','Action']);row.dataset.reviewPending=exam.blockers.review_pending||0;}
+      if(!result.waiting.length)emptyRows(waiting,'No assessments waiting on completion.',4);
+      const recent=el('overview-recent');recent.replaceChildren();
+      for(const publication of result.recent_publications){const item=node('div'),details=node('div');details.append(node('strong','',publication.title),node('p','',`${publication.internal_reference||'No exam code'} / ${date(publication.published_at)} / ${publication.candidate_count} candidates`));item.append(details,button('View results',()=>{selectMainTab('publications',false);openPublishedResults(publication.id);}));recent.append(item);}
+      if(!result.recent_publications.length)recent.append(node('p','review-muted','No results published yet.'));
+      notice(scope,'overview-message','');el('overview-content').hidden=false;applyOverviewFocus();
+    } catch(error){if(serial===overviewSerial&&scope.active)notice(scope,'overview-message',error.message,'error',{label:'Retry',onClick:loadOverview});}
+  }
+  el('overview-refresh').addEventListener('click',loadOverview);
+  function applyOverviewFocus() {
+    const selected=overviewFocus;
+    const copy={
+      'overview-queue':['Ready for audit','Candidate reports with a completed review and evidence ready for auditing.'],
+      'overview-waiting':['Awaiting review','These assessments have candidate attempts awaiting a reviewer decision.'],
+      'overview-publish':['Ready to publish','All candidates in these assessments have completed auditing.']
+    };
+    el('overview-selection').hidden=!selected;
+    if(selected){el('overview-selection-title').textContent=copy[selected][0];el('overview-selection-description').textContent=copy[selected][1];}
+    for(const element of document.querySelectorAll('[data-overview-jump]')){const active=element.dataset.overviewJump===selected;element.classList.toggle('is-selected',active);element.setAttribute('aria-pressed',String(active));}
+    el('overview-work-grid').hidden=selected==='overview-waiting';
+    el('overview-work-grid').classList.toggle('is-focused',!!selected);
+    for(const id of ['overview-queue','overview-publish','overview-waiting'])el(id).hidden=!!selected&&id!==selected;
+    el('overview-recent-section').hidden=!!selected;
+    el('overview-waiting-title').textContent=selected==='overview-waiting'?'Assessments awaiting review':'Waiting on completion';
+    const waiting=el('overview-waiting-rows');waiting.querySelector('[data-filter-empty]')?.remove();
+    let matches=0;
+    for(const row of waiting.rows){row.hidden=selected==='overview-waiting'&&!(Number(row.dataset.reviewPending)>0);if(!row.hidden)matches++;for(const reason of row.querySelectorAll('[data-blocker]'))reason.hidden=selected==='overview-waiting'&&reason.dataset.blocker!=='review_pending';}
+    if(selected==='overview-waiting'&&!matches){const row=node('tr');row.dataset.filterEmpty='true';const cell=node('td','table-empty','No candidate attempts awaiting review.');cell.colSpan=4;row.append(cell);waiting.append(row);}
+    if(selected==='overview-queue')el('overview-queue-more').onclick?.();
+  }
+  for(const element of document.querySelectorAll('[data-overview-jump]'))element.addEventListener('click',()=>{overviewFocus=element.dataset.overviewJump;applyOverviewFocus();const heading=el('overview-selection');heading.scrollIntoView({block:'start',behavior:'instant'});heading.tabIndex=-1;heading.focus({preventScroll:true});});
+  el('overview-show-all').addEventListener('click',()=>{overviewFocus=null;applyOverviewFocus();});
+  for(const id of ['overview-history','overview-all-publications'])el(id).addEventListener('click',()=>selectMainTab('publications'));
+  el('overview-all-audits').addEventListener('click',()=>{el('exam-audit').value='pending';page=1;view('exam');selectMainTab('auditing');});
   async function loadExams() {
     const serial = ++examSerial;
     const scope = examFeedback = feedback.scope('auditor-exams');
@@ -341,11 +401,13 @@
       ++historySerial; ++historyDetailSerial; clearTimeout(historySearchTimer);
       historyFeedback.dispose(); historyDetailFeedback.dispose();
     }
+    if(name!=='overview'){++overviewSerial;overviewFeedback.dispose();}
     pausePlayers(); message();
     for (const item of document.querySelectorAll("[data-main-tab]")) { const active = item.dataset.mainTab === name; item.classList.toggle("is-active", active); if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); }
     for (const pane of document.querySelectorAll("[data-main-pane]")) pane.hidden = pane.dataset.mainPane !== name;
     el("page-title").textContent = name === "auditing" ? "Assessment auditing" : name === "overview" ? "Overview" : "Publication history";
-    if (name === "auditing" && el("exam-view").hidden === false) loadExams();
+    if (name === "overview") loadOverview();
+    if (name === "auditing" && loadHistory && el("exam-view").hidden === false) loadExams();
     if (name === "publications" && loadHistory) { ++historyDetailSerial; historyDetailFeedback.dispose(); el("history-detail-view").hidden = true; el("history-list-view").hidden = false; historyPage = 1; loadPublicationHistory(); }
   }
   for (const b of document.querySelectorAll("[data-main-tab]")) b.addEventListener("click", () => selectMainTab(b.dataset.mainTab));
@@ -469,7 +531,7 @@
   });
   publicationForm.addEventListener('submit', event => { event.preventDefault(); el('publish-confirm')?.click(); });
   (async () => {
-    try { const user = await api("/api/auth/me"); if (user.role !== "auditor") return location.replace("/"); el("account-name").textContent = user.username; await loadExams(); }
+    try { const user = await api("/api/auth/me"); if (user.role !== "auditor") return location.replace("/"); el("account-name").textContent = user.username; selectMainTab('overview'); }
     catch (error) { message(error.message); }
   })();
 })();

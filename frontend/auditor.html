@@ -6,29 +6,36 @@
     <title>Auditor workspace | AssessBridge</title>
     <link rel="stylesheet" href="/css/employer.css?v=20261113-lifecycle" />
     <link rel="stylesheet" href="/css/employer-review.css?v=20261113-lifecycle" />
-    <link rel="stylesheet" href="/css/auditor.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/auditor.css?v=20261113-overview-focus" />
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/audit-player.js?v=20261113-audit" defer></script>
     <script src="/js/connectivity-case.js?v=20261113-audit" defer></script>
-    <script src="/js/auditor.js?v=20261113-audit" defer></script>
+    <script src="/js/auditor.js?v=20261113-overview-focus" defer></script>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Auditor navigation">
         <div class="sidebar-top"><a class="brand" href="/auditor"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>AssessBridge</span></a><span class="workspace-label">AUDITOR WORKSPACE</span></div>
         <nav class="side-nav" aria-label="Workspace sections">
-          <button class="nav-item" data-main-tab="overview" type="button"><span class="nav-dot"></span>Overview</button>
-          <button class="nav-item is-active" data-main-tab="auditing" aria-current="page" type="button"><span class="nav-dot"></span>Assessment auditing</button>
+          <button class="nav-item is-active" aria-current="page" data-main-tab="overview" type="button"><span class="nav-dot"></span>Overview</button>
+          <button class="nav-item" data-main-tab="auditing" type="button"><span class="nav-dot"></span>Assessment auditing</button>
           <button class="nav-item" data-main-tab="publications" type="button"><span class="nav-dot"></span>Publication history</button>
         </nav>
       </aside>
       <div class="workspace">
         <header class="topbar"><span class="topbar-context">Employer Company Representative Auditor</span><div class="topbar-account"><span class="account-avatar" aria-hidden="true">AU</span><span id="account-name"></span><button id="sign-out" class="text-button" type="button">Sign out</button></div></header>
         <main class="main-content">
-          <div class="page-heading"><div><p class="eyebrow">ASSESSBRIDGE / AUDITOR</p><h1 id="page-title">Assessment auditing</h1></div></div>
+          <div class="page-heading"><div><p class="eyebrow">ASSESSBRIDGE / AUDITOR</p><h1 id="page-title">Overview</h1></div></div>
           <div id="auditor-notifications"></div><div id="page-message" class="editor-feedback-host"></div>
-          <section data-main-pane="overview" aria-label="Overview" hidden></section>
+          <section data-main-pane="overview" aria-label="Overview">
+<div class="overview-heading"><p id="overview-company" class="review-muted"></p><div><span id="overview-updated" class="review-muted"></span><button id="overview-refresh" class="secondary-button" type="button">Refresh</button></div></div>
+<div id="overview-message" class="editor-feedback-host"></div><div id="overview-content" hidden>
+<div class="overview-metrics"><button data-overview-jump="overview-queue"><span>Ready for audit</span><strong id="overview-ready-count"></strong><small>Candidate reports</small></button><button data-overview-jump="overview-waiting"><span>Awaiting review</span><strong id="overview-review-count"></strong><small>Candidate attempts</small></button><button data-overview-jump="overview-publish"><span>Ready to publish</span><strong id="overview-publish-count"></strong><small>Assessments</small></button><button id="overview-history" type="button"><span>Published assessments</span><strong id="overview-published-count"></strong><small>Final results</small></button></div>
+<div id="overview-selection" class="overview-selection" hidden><div><h2 id="overview-selection-title"></h2><p id="overview-selection-description" class="review-muted"></p></div><button id="overview-show-all" class="secondary-button" type="button">Back to full overview</button></div><div class="overview-work-grid" id="overview-work-grid"><section id="overview-queue" class="card section-card"><div class="section-card-head"><h2>Audit queue</h2><button id="overview-all-audits" class="text-button" type="button">View all</button></div><div class="table-wrap history-table-wrap"><table class="audit-table"><thead><tr><th>Assessment</th><th>Exam code</th><th>Closed on</th><th>Ready for audit</th><th>Audited</th><th>Action</th></tr></thead><tbody id="overview-queue-rows"></tbody></table></div><button id="overview-queue-more" class="text-button" type="button" hidden>Show all ready assessments</button></section><section id="overview-publish" class="card section-card"><h2>Ready to publish</h2><div id="overview-publish-list" class="overview-list"></div></section></div>
+<section id="overview-waiting" class="card section-card"><h2 id="overview-waiting-title">Waiting on completion</h2><div class="table-wrap history-table-wrap"><table class="audit-table"><thead><tr><th>Assessment</th><th>Exam code</th><th>Pending work</th><th>Action</th></tr></thead><tbody id="overview-waiting-rows"></tbody></table></div></section>
+<section id="overview-recent-section" class="card section-card"><div class="section-card-head"><h2>Recently published</h2><button id="overview-all-publications" class="text-button" type="button">View publication history</button></div><div id="overview-recent" class="overview-list"></div></section>
+</div></section>
           <section data-main-pane="publications" aria-label="Publication history" hidden>
             <div id="history-list-view" class="card section-card">
               <div class="section-card-head"><h2>Published results</h2><button id="history-refresh" class="secondary-button" type="button">Refresh</button></div>
@@ -52,7 +59,7 @@
               </div>
             </div>
           </section>
-          <section data-main-pane="auditing" aria-label="Assessment auditing">
+          <section data-main-pane="auditing" aria-label="Assessment auditing" hidden>
             <div id="exam-view" class="card section-card">
               <div class="section-card-head"><h2>Assessments</h2><button id="exam-refresh" class="secondary-button" type="button">Refresh</button></div>
               <form id="exam-filters" class="audit-filters">

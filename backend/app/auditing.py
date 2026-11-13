@@ -233,3 +233,60 @@ def identity_image(assessment_id, invitation_id, kind: Literal["card", "selfie"]
         _audit(cursor, session["id"], auditor_id, f"audit_identity_{kind}", source_ip)
         connection.commit()
     return raw
+
+
+def overview(company_id):
+    """Company-wide closed-assessment readiness, using the audit evidence version."""
+    from .publications import publication_history
+    queue, ready, waiting = [], [], []
+    totals = {'ready_for_audit': 0, 'awaiting_review': 0, 'ready_to_publish': 0, 'published': 0}
+    with database() as connection:
+        connection.start_transaction(isolation_level='REPEATABLE READ', consistent_snapshot=True)
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute('SELECT name FROM companies WHERE id=%s AND is_active=TRUE', (company_id,))
+        company = cursor.fetchone()
+        if not company:
+            raise HTTPException(403, 'Company access unavailable')
+        cursor.execute("""SELECT a.id,a.title,a.internal_reference,a.ends_at,
+                          EXISTS(SELECT 1 FROM assessment_result_publications p WHERE p.assessment_id=a.id AND p.is_legacy=FALSE) AS published
+                          FROM assessments a WHERE a.company_id=%s AND a.ends_at<=UTC_TIMESTAMP()
+                          ORDER BY a.ends_at,a.id""", (company_id,))
+        exams = cursor.fetchall()
+        for exam in exams:
+            if exam.pop('published'):
+                totals['published'] += 1
+                continue
+            cursor.execute("""SELECT i.id AS invitation_id,s.id,s.submitted_at,s.disqualified_at,s.interrupted_at,
+                              EXISTS(SELECT 1 FROM assessment_review_decisions d WHERE d.session_id=s.id) AS reviewed
+                              FROM assessment_invitations i LEFT JOIN assessment_exam_sessions s ON s.invitation_id=i.id
+                              WHERE i.assessment_id=%s ORDER BY i.id""", (exam['id'],))
+            sessions = cursor.fetchall()
+            counts = dict(candidates=len(sessions), ready=0, audited=0, review_pending=0, evidence_pending=0, changed=0, no_attempt=0, unfinished=0)
+            for session in sessions:
+                if not session['id']:
+                    counts['no_attempt'] += 1
+                    continue
+                terminal = bool(session['submitted_at'] or session['disqualified_at'] or session['interrupted_at'])
+                pending = evidence_pending(cursor, session)
+                status, _ = _status(cursor, session['id'])
+                if not terminal: counts['unfinished'] += 1
+                if not session['reviewed']: counts['review_pending'] += 1
+                if pending: counts['evidence_pending'] += 1
+                if status['history'] and not status['current']: counts['changed'] += 1
+                eligible = terminal and session['reviewed'] and not pending
+                if eligible and status['current']: counts['audited'] += 1
+                elif eligible: counts['ready'] += 1
+            exam['ends_at'] = iso(exam['ends_at'])
+            exam.update(counts)
+            totals['ready_for_audit'] += counts['ready']
+            totals['awaiting_review'] += counts['review_pending']
+            if counts['ready']: queue.append(exam)
+            if counts['candidates'] and counts['audited'] == counts['candidates']: ready.append(exam)
+            blockers = {key:counts[key] for key in ('review_pending','evidence_pending','changed','no_attempt','unfinished') if counts[key]}
+            if not sessions: blockers['no_candidates'] = 1
+            if blockers: waiting.append({**exam,'blockers':blockers})
+        connection.commit()
+    totals['ready_to_publish'] = len(ready)
+    recent = publication_history(company_id=company_id)['items'][:3]
+    return {'company':company['name'], 'updated_at':iso(now()), 'totals':totals,
+            'queue':queue, 'ready_to_publish':ready, 'waiting':waiting, 'recent_publications':recent}
