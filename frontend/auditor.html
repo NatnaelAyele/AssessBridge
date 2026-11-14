@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Auditor workspace | AssessBridge</title>
     <link rel="stylesheet" href="/css/employer.css?v=20261113-lifecycle" />
-    <link rel="stylesheet" href="/css/employer-review.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/employer-review.css?v=20261114-readiness" />
     <link rel="stylesheet" href="/css/auditor.css?v=20261113-overview-focus" />
     <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/auditor-workspace.css?v=20261113-refresh" />
@@ -13,9 +13,11 @@
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/audit-player.js?v=20261113-audit" defer></script>
-    <script src="/js/connectivity-case.js?v=20261113-audit" defer></script>
+    <script src="/js/connectivity-case.js?v=20261114-readiness" defer></script>
+    <link rel="stylesheet" href="/css/reporting.css?v=20261114" />
+    <script src="/js/reporting.js?v=20261114" defer></script>
     <script src="/js/casework.js?v=20261113" defer></script>
-    <script src="/js/auditor.js?v=20261113-casework" defer></script>
+    <script src="/js/auditor.js?v=20261114-reporting" defer></script>
   </head>
   <body class="auditor-dashboard">
     <div class="app-shell">
@@ -87,9 +89,10 @@
               <div id="candidate-message" class="editor-feedback-host"></div>
                 <div class="table-wrap"><table class="audit-table"><thead><tr><th>Candidate</th><th>Exam status</th><th>Final recorded result</th><th>Audit status</th><th><span class="sr-only">Audit report</span></th></tr></thead><tbody id="candidate-rows"></tbody></table></div>
               </div>
+              <details id="auditor-reporting-details" class="card section-card reporting-panel"><summary>Results &amp; exports</summary><div id="auditor-report-controls"></div><div class="table-wrap reporting-table-wrap"><table class="reporting-table"><thead><tr><th>Candidate / session</th><th>Attempt status</th><th>MCQ grade</th><th>Written grade</th><th>Calculated total</th><th>Final reviewed result</th><th>Audit status</th><th>Publication</th><th>Report</th></tr></thead><tbody id="auditor-results-rows"></tbody></table></div><div id="auditor-report-pagination"></div></details>
             </div>
             <div id="case-view" hidden>
-              <div class="card audit-view-head"><button id="back-candidates" class="audit-back" type="button">Back to candidates</button><div class="audit-case-heading"><div><span class="detail-field-label">Exam</span><h2 id="case-exam-title"></h2><span class="detail-field-label">Candidate</span><h3 id="case-name"></h3><p id="case-email" class="review-muted"></p></div><button id="case-reload" class="secondary-button" type="button">Reload report</button></div></div>
+              <div class="card audit-view-head"><button id="back-candidates" class="audit-back" type="button">Back to candidates</button><div class="audit-case-heading"><div><span class="detail-field-label">Exam</span><h2 id="case-exam-title"></h2><span class="detail-field-label">Candidate</span><h3 id="case-name"></h3><p id="case-email" class="review-muted"></p></div><div class="reporting-head-actions"><button id="case-export" class="secondary-button" type="button">Export saved audit PDF</button><button id="case-reload" class="secondary-button" type="button">Reload report</button></div></div></div>
               <div id="case-message" class="editor-feedback-host"></div>
               <div id="audit-action-bar" class="card audit-action-bar"><div><strong id="audit-status"></strong><p id="audit-attribution" class="review-muted"></p></div><div class="casework-actions"><button id="audit-needs-attention" class="secondary-button" type="button">Needs attention</button><button id="mark-audited" class="primary-button" type="button">Mark as audited</button></div></div>
               <div id="audit-concern" class="casework-concern"></div><div id="audit-blocker" class="editor-feedback-host"></div>
