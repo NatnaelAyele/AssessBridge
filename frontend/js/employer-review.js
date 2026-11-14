@@ -31,6 +31,7 @@ window.employerReview = (() => {
   }
   function notifySaved(scope, text) { if (reviewVisible) scope.notify({ id: 'saved', text }); }
   function deactivate() {
+    for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
     reviewVisible = false; ++activationSerial; ++cardLoading;
     indexMessages.clearAll(); cardMessages.clearAll(); sessionMessages.clearAll(); pauseMedia();
   }
@@ -40,6 +41,7 @@ window.employerReview = (() => {
   const cardMessages = feedback.scope('review-cards');
   let fieldSequence = 0;
   function resetMessages() {
+    for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
     pendingWrites.clear();
     sessionMessages.dispose(); sessionMessages = feedback.scope('review-session');
   }
@@ -305,7 +307,7 @@ window.employerReview = (() => {
     const filter = el("review-filter").value, state = el("review-attempt-filter").value;
     const filtered = cards.filter((card) => `${card.name} ${card.email}`.toLocaleLowerCase().includes(query)
       && (state === "all" || card.attempt_state === state)
-      && (filter === "all" || card.review_state === filter || (filter === "events" && card.event_count > 0) || (filter === "coverage" && card.coverage_attention)));
+      && (filter === "all" || (filter === "audit_attention" && card.audit_attention) || card.review_state === filter || (filter === "events" && card.event_count > 0) || (filter === "coverage" && card.coverage_attention)));
     const list = el("review-candidate-cards"); list.replaceChildren();
     el("review-card-count").textContent = `${filtered.length} of ${cards.length} candidates`;
     for (const card of filtered) {
@@ -313,6 +315,7 @@ window.employerReview = (() => {
       const heading = node("div", "review-card-heading"); heading.append(node("h3", "", card.name), badge(card.attempt_state, card.attempt_state === "disqualified"));
       article.append(heading, node("p", "review-muted", card.email));
       const badges = node("div", "review-badges"); badges.append(badge(card.review_state));
+      if(card.audit_attention)badges.append(node('span','review-badge is-warning','Audit needs attention'));
       if (card.decision) badges.append(badge(card.decision.action, card.outcome === "disqualified"));
       article.append(badges, node("p", "review-card-score", card.has_session ? score(card.score, card.possible) : "No attempt yet"));
       article.append(node("p", "review-muted", `${card.event_count} observations${card.coverage_attention ? " · Monitoring needs attention" : ""}`));
@@ -405,6 +408,10 @@ window.employerReview = (() => {
     }
     for (const pane of document.querySelectorAll("[data-review-pane]")) pane.hidden = pane.dataset.reviewPane !== tab;
     if (tab !== "integrity") pauseMedia();
+    if(report&&['notes','history'].includes(tab)){
+      const options={base:base()+'/review',feedback:employerFeedback,readOnly:sessionReadOnly||report.published,revision:report.revision,onReload:refreshReport,onSaved:result=>{if(result.revision&&!result.duplicate)report.revision=result.revision;else{stale=true;updateDecisionDisabled();}},onReference:ref=>{if(ref.kind==='observation'){selectTab('integrity');const event=monitoring.events.find(e=>e.event_key===ref.key);const article=event&&el('review-event-'+event.id);if(article){article.scrollIntoView({block:'center'});article.querySelector('.review-play-observation')?.click();}}else if(ref.kind==='interruption')selectTab('connectivity');else{el('review-case-notes').dataset.focusNote=ref.key;selectTab('notes');}}};
+      if(tab==='notes')AssessBridgeCasework.mountNotes(el('review-case-notes'),options);else AssessBridgeCasework.mountHistory(el('review-case-history'),options);
+    }
   }
   function renderSession() {
     setSessionMode(sessionReadOnly);
@@ -427,6 +434,8 @@ window.employerReview = (() => {
       ["Automatic multiple choice grade", report.scores.objective_possible ? `${report.scores.objective_earned} / ${report.scores.objective_possible}` : "—"],
       ["Final total grade", report.outcome === "disqualified" ? "Disqualified" : report.decision ? score(scoreValue, report.scores.possible) : report.attempt_state !== "in_progress" ? "Awaiting review" : "In progress"],
       ["Identity check", report.identity?.status === "passed" ? "Passed" : report.identity?.status === "failed" ? "Failed" : "Not checked"]]);
+    const showConcern=(id,value,title)=>{sessionMessages.clear(id);if(value)sessionMessages.show({id,target:el(id),tone:'warning',text:`${title}: ${value.reason}\nRecorded by ${value.actor_name} / ${date(value.created_at)}`});};
+    showConcern('review-audit-concern',report.audit_concern,'Audit needs attention');showConcern('review-assessment-hold',report.publication_hold,'Publication on hold');
     renderCoverage(); renderHistory(); renderQuestions(); renderEvents(); renderFindingHistory(); renderRecording(); renderConnectivity();
     el("review-policy-lock").hidden = !report.system_disqualification_locked;
     el("review-decision-state").textContent = report.decision ? `${titles[report.decision.action]} · ${date(report.decision.created_at)}` : "No disposition recorded.";

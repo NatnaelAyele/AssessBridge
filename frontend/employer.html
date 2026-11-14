@@ -9,8 +9,10 @@
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/employer.js?v=20261113-roster-removal" defer></script>
     <script src="js/connectivity-case.js?v=20261113-audit" defer></script>
-    <script src="js/employer-review.js?v=20261113-audit" defer></script>
+    <script src="/js/casework.js?v=20261113" defer></script>
+    <script src="js/employer-review.js?v=20261113-casework" defer></script>
     <link rel="stylesheet" href="css/employer-review.css?v=20261113-lifecycle" />
+    <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/personnel.css?v=20261113-roster-removal" />
     <link rel="stylesheet" href="/css/workspace-sidebar.css?v=20261113-blue" />
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
@@ -228,7 +230,7 @@
               <div class="card review-candidates-head"><button id="review-back-exams" class="text-button" type="button">Back to assessments</button><div><span class="detail-field-label">Exam</span><h2 id="review-queue-title"></h2><p id="review-queue-code" class="review-muted"></p></div></div>
               <div class="card section-card review-toolbar">
                 <label>Find candidate<input id="review-search" type="search" placeholder="Name or email" /></label>
-                <label>Review filter<select id="review-filter"><option value="all">All candidates</option><option value="awaiting_review">Awaiting review</option><option value="reviewed">Reviewed</option><option value="events">Has observations</option><option value="coverage">Monitoring needs attention</option></select></label>
+                <label>Review filter<select id="review-filter"><option value="all">All candidates</option><option value="awaiting_review">Awaiting review</option><option value="reviewed">Reviewed</option><option value="audit_attention">Audit needs attention</option><option value="events">Has observations</option><option value="coverage">Monitoring needs attention</option></select></label>
                 <label>Attempt state<select id="review-attempt-filter"><option value="all">All attempts</option><option value="submitted">Submitted</option><option value="interrupted">Interrupted</option><option value="disqualified">Disqualified</option><option value="in_progress">In progress</option><option value="not_started">Not started</option></select></label>
                 <button id="review-refresh-cards" class="secondary-button" type="button">Refresh</button>
               </div>
@@ -243,7 +245,7 @@
                 <button id="review-reload" class="secondary-button" type="button">Reload report</button>
               </div>
               <div id="review-session-message" class="editor-feedback-host"></div>
-              <div id="review-publication-lock" class="editor-feedback-host"></div>
+              <div id="review-audit-concern"></div><div id="review-assessment-hold"></div><div id="review-publication-lock" class="editor-feedback-host"></div>
               <div class="review-layout">
                 <div class="review-content">
                   <div class="review-tabs" role="tablist" aria-label="Candidate report">
@@ -251,7 +253,11 @@
                     <button id="review-results-tab" role="tab" aria-selected="false" aria-controls="review-results" data-review-tab="results" type="button" tabindex="-1">Results</button>
                     <button id="review-integrity-tab" role="tab" aria-selected="false" aria-controls="review-integrity" data-review-tab="integrity" type="button" tabindex="-1">Integrity report</button>
                     <button id="review-connectivity-tab" role="tab" aria-selected="false" aria-controls="review-connectivity-pane" data-review-tab="connectivity" type="button" tabindex="-1">Connectivity &amp; interruptions</button>
+                    <button id="review-notes-tab" role="tab" aria-selected="false" aria-controls="review-notes-pane" data-review-tab="notes" type="button" tabindex="-1">Case notes</button>
+                    <button id="review-history-tab" role="tab" aria-selected="false" aria-controls="review-history-pane" data-review-tab="history" type="button" tabindex="-1">Session history</button>
                   </div>
+                  <section id="review-notes-pane" class="card section-card casework-panel" data-review-pane="notes" role="tabpanel" aria-labelledby="review-notes-tab" hidden><h3>Case notes</h3><div id="review-case-notes"></div></section>
+                  <section id="review-history-pane" class="card section-card casework-panel" data-review-pane="history" role="tabpanel" aria-labelledby="review-history-tab" hidden><h3>Session history</h3><div id="review-case-history"></div></section>
                   <section id="review-overview" role="tabpanel" aria-labelledby="review-overview-tab" data-review-pane="overview">
                     <div class="card review-time-card"><div><span>Time used</span><strong id="review-time-used">—</strong></div><div class="review-time-track" role="progressbar" aria-label="Exam time used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="review-time-progress"></span></div></div>
                     <div id="review-overview-facts" class="review-facts"></div>

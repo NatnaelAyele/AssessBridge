@@ -57,15 +57,23 @@ def _state(cursor, assessment_id, lock=False):
                          "session": session["id"] if session else None,
                          "version": audit["version"] if audit else None,
                          "audit": audit["current"]["id"] if audit and audit["current"] else None,
+                         "audit_outcome":audit.get("outcome_revision",0) if audit else 0,
                          "decision": decision["id"] if decision else None})
         rows.append((invitation, session, decision))
+    from .casework import latest_hold,public
+    hold=latest_hold(cursor,assessment_id)
+    versions.append({"hold_revision":hold["id"] if hold else 0})
     version = hashlib.sha256(json.dumps(versions, sort_keys=True).encode()).hexdigest()
     latest = _latest_publication(cursor, assessment_id)
     current = bool(latest)
-    can_publish = bool(assessment["closed"] and invitations and audited == len(invitations) and not current)
+    held=bool(hold and hold["kind"]=="held")
+    can_publish = not held and bool(assessment["closed"] and invitations and audited == len(invitations) and not current)
     pending = len(invitations) - audited
     blocked = "No candidates assigned." if not invitations else f"{pending} {'candidate still needs' if pending == 1 else 'candidates still need'} auditing." if pending else None
-    return {"status": "published" if current else "unpublished",
+    if held: blocked="Publication is on hold. Resolve the hold before publishing."
+    cursor.execute("SELECT * FROM assessment_publication_holds WHERE assessment_id=%s ORDER BY id DESC",(assessment_id,))
+    hold_history=[public(row) for row in cursor.fetchall()]
+    return {"hold":public(hold) if held else None,"hold_history":hold_history,"status": "published" if current else "unpublished",
             "latest": latest, "version": version, "candidate_count": len(invitations), "audited_count": audited,
             "can_publish": can_publish, "blocked_reason": blocked}, rows, unpack(assessment["questions_json"])
 

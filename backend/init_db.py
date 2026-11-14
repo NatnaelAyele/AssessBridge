@@ -152,3 +152,6 @@ migrate()
 
 from migrate_roster_removals import migrate as migrate_roster_removals
 migrate_roster_removals()
+
+from migrate_casework import migrate as migrate_casework
+migrate_casework()

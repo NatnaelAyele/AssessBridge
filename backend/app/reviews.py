@@ -217,12 +217,17 @@ def session_report(assessment_id, invitation_id, employer_id, source_ip=None, ac
                                   "finding": row["finding"], "reason": row["reason"], "reviewer": row["reviewer_username"],
                                   "reviewer_id": row["reviewer_user_id"], "created_at": iso(row["created_at"]),
                                   "incident_snapshot": unpack(row["incident_snapshot_json"])} for row in cursor.fetchall()]
+        from .casework import latest_outcome,latest_hold,public
+        outcome=latest_outcome(cursor,session["id"])
+        concern=public(outcome) if outcome and outcome["kind"]=="needs_attention" else None
+        hold=latest_hold(cursor,assessment_id)
+        publication_hold=public(hold) if hold and hold["kind"]=="held" else None
         _audit(cursor, session["id"], actor_id or employer_id, "report", source_ip)
         connection.commit()
     system_locked = bool(session["disqualified_at"])
     ended = bool(ended_at(session))
     latest_json = _decision(latest)
-    return {"assessment_id": assessment_id, "invitation_id": invitation_id, "session_id": session["id"],
+    return {"audit_concern":concern,"publication_hold":publication_hold,"assessment_id": assessment_id, "invitation_id": invitation_id, "session_id": session["id"],
             "title": session["title"], "name": session["candidate_name"], "email": session["candidate_email"],
             "attempt_state": "disqualified" if system_locked else "interrupted" if session.get("interrupted_at") else "submitted" if ended else "in_progress",
             "interruption_reason": session.get("interruption_reason"), "connectivity_events": connectivity,
@@ -421,7 +426,9 @@ def candidate_cards(assessment_id, employer_id):
             else:
                 scores = {"calculated_score": None, "possible": len(questions), "written_pending": 0}
             state = "disqualified" if row["disqualified_at"] else "interrupted" if row.get("interrupted_at") else "submitted" if row["submitted_at"] else "in_progress" if row["id"] else "not_started"
-            cards.append({"invitation_id": row["invitation_id"], "name": row["candidate_name"], "email": row["candidate_email"],
+            from .casework import latest_outcome
+            outcome=latest_outcome(cursor,row['id']) if row['id'] else None
+            cards.append({"audit_attention":bool(outcome and outcome['kind']=='needs_attention'),"invitation_id": row["invitation_id"], "name": row["candidate_name"], "email": row["candidate_email"],
                           "attempt_state": state, "has_session": bool(row["id"]), "invitation_state": row["delivery_status"],
                           "review_state": "reviewed" if latest else "awaiting_review" if state in {"submitted", "disqualified", "interrupted"} else "not_ready",
                           "outcome": "disqualified" if row["disqualified_at"] or (latest and latest["action"] == "disqualify") else "eligible" if latest else "awaiting_review",

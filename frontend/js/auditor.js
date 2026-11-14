@@ -70,10 +70,10 @@
     while ((index = text.toLowerCase().indexOf(search, pos)) >= 0) { target.append(document.createTextNode(text.slice(pos, index)), node("mark", "", text.slice(index, index + search.length))); pos = index + search.length; }
     target.append(document.createTextNode(text.slice(pos)));
   }
-  function auditStatus(audit) { return audit.status === "audited" ? "Audited" : audit.status === "changed" ? "Needs audit · Report updated" : audit.status === "not_ready" ? "No attempt" : "Needs audit"; }
+  function auditStatus(audit) { if(audit.status==="needs_attention")return "Needs attention";return audit.status === "audited" ? "Audited" : audit.status === "changed" ? "Needs audit · Report updated" : audit.status === "not_ready" ? "No attempt" : "Needs audit"; }
   function pill(text, good = false, bad = false) { return node("span", `audit-status-pill${good ? " is-audited" : ""}${bad ? " is-error" : ""}`, text); }
   function pausePlayers() { fullPlayer?.pause(); evidencePlayer?.pause(); }
-  function clearPlayers() { fullPlayer?.destroy(); evidencePlayer?.destroy(); fullPlayer = evidencePlayer = null; el("full-player-host").hidden = true; el("recording-toggle").textContent = "Open recording"; }
+  function clearPlayers() { for(const id of ['audit-case-notes','audit-case-history'])el(id)?._casework?.(); fullPlayer?.destroy(); evidencePlayer?.destroy(); fullPlayer = evidencePlayer = null; el("full-player-host").hidden = true; el("recording-toggle").textContent = "Open recording"; }
   function view(name) {
     for (const item of ["exam", "candidate", "case"]) el(`${item}-view`).hidden = item !== name;
     if (name !== 'case') caseFeedback.dispose();
@@ -170,7 +170,7 @@
       for(const exam of result.ready_to_publish){const item=node('div'),details=node('div');details.append(node('strong','',exam.title),node('p','',`${exam.internal_reference||'No exam code'} / ${exam.candidates} candidates`));item.append(details,button('Review publication',()=>overviewExam(exam)));publish.append(item);}
       if(!result.ready_to_publish.length)publish.append(node('p','review-muted','No assessments ready to publish.'));
       const waiting=el('overview-waiting-rows');waiting.replaceChildren();
-      const pendingLabels={review_pending:n=>`${n} candidate ${n===1?'review':'reviews'} pending`,evidence_pending:n=>`Recording upload or processing pending for ${n} ${n===1?'candidate':'candidates'}`,changed:n=>`${n} ${n===1?'report changed':'reports changed'} after auditing`,no_attempt:n=>`${n} ${n===1?'candidate has':'candidates have'} no recorded attempt`,unfinished:n=>`${n} ${n===1?'attempt has':'attempts have'} not ended`,no_candidates:()=> 'No candidates assigned'};
+      const pendingLabels={review_pending:n=>`${n} candidate ${n===1?'review':'reviews'} pending`,evidence_pending:n=>`Recording upload or processing pending for ${n} ${n===1?'candidate':'candidates'}`,changed:n=>`${n} ${n===1?'report changed':'reports changed'} after auditing`,no_attempt:n=>`${n} ${n===1?'candidate has':'candidates have'} no recorded attempt`,unfinished:n=>`${n} ${n===1?'attempt has':'attempts have'} not ended`,needs_attention:n=>`${n} ${n===1?'audit concern remains':'audit concerns remain'} unresolved`,publication_hold:()=> 'Publication is on hold',no_candidates:()=> 'No candidates assigned'};
       for(const exam of result.waiting){const reasons=node('div','overview-pending');for(const [key,count]of Object.entries(exam.blockers)){const reason=node('span','',pendingLabels[key](count));reason.dataset.blocker=key;reasons.append(reason);}const row=overviewRow(waiting,[exam.title,exam.internal_reference||'Not set',reasons,button('Open assessment',()=>overviewExam(exam))],['Assessment','Exam code','Pending work','Action']);row.dataset.reviewPending=exam.blockers.review_pending||0;}
       if(!result.waiting.length)emptyRows(waiting,'No assessments waiting on completion.',4);
       const recent=el('overview-recent');recent.replaceChildren();
@@ -257,10 +257,14 @@
     el("publication-record").hidden = !latest;
     el("publication-by").textContent = latest ? `Published by ${latest.publisher_username} · ${date(latest.published_at)}` : "";
     el("publication-remark").textContent = latest?.remark || "";
+    el('publication-hold').hidden=published;el('publication-hold').textContent=publication.hold?'Resolve publication hold':'Place publication on hold';
+    const holdHistory=el('publication-hold-history');holdHistory.replaceChildren();
+    for(const item of publication.hold_history||[]){const entry=node('div','casework-entry');entry.append(node('strong','',item.kind==='held'?'Publication on hold':'Hold resolved'),node('p','',item.reason),node('small','',`${item.actor_name} / ${date(item.created_at)}`));holdHistory.append(entry);}
+
   }
   function renderCandidates() {
     const query = el("candidate-search").value.toLowerCase().trim(), filter = el("candidate-audit").value;
-    const matching = cards.filter(c => `${c.name} ${c.email}`.toLowerCase().includes(query) && (filter === "all" || (filter === "audited") === (c.audit.status === "audited")));
+    const matching = cards.filter(c => `${c.name} ${c.email}`.toLowerCase().includes(query) && (filter === "all" || (filter === "attention" ? c.audit.status === "needs_attention" : (filter === "audited") === (c.audit.status === "audited"))));
     el("candidate-rows").replaceChildren();
     for (const card of matching) {
       const row = node("tr"), who = node("td"); who.append(node("strong", "", card.name), node("span", "review-muted", card.email));
@@ -353,6 +357,7 @@
     el("audit-flags").replaceChildren();
     for (const event of [...data.monitoring.events].sort((a,b) => eventOffset(a) - eventOffset(b))) {
       const article = node("article", "card section-card review-event"), head = node("div", "review-event-top");
+      article.dataset.eventKey=event.event_key;
       head.append(node("h3", "", flags[event.event_type] || event.event_type.replaceAll("_", " ")), node("span", "review-event-time", `${time(eventOffset(event))}–${time(eventOffset(event) + event.end_ms - event.start_ms)}`)); article.append(head, node("p", "review-model-score", `Detection strength: ${pct(event.confidence)}`));
       const recorded = data.review.findings.filter(f => f.event_key === event.event_key);
       if (recorded.length) article.append(renderFinding(recorded[0]));
@@ -375,6 +380,9 @@
     el("audit-attribution").textContent = [entry ? `${a.current ? "Audited" : "Previously audited"} by ${entry.auditor_username} · ${date(entry.created_at)}` : ""].filter(Boolean).join(" · ");
     notice(caseFeedback, 'audit-blocker', !a.current ? a.blocked_reason || '' : '', 'warning');
     el("audit-action-bar").classList.toggle("is-audited", !!a.current);
+    el('audit-needs-attention').hidden=!!data.review.published;
+    el('audit-needs-attention').disabled=saving;
+    notice(caseFeedback,'audit-concern',a.concern?`Needs attention: ${a.concern.reason}\nRecorded by ${a.concern.actor_name} / ${date(a.concern.created_at)}`:'','warning');
     el("mark-audited").hidden = !!a.current;
     el("mark-audited").textContent = saving ? "Saving…" : "Mark as audited"; el("mark-audited").disabled = saving || !!a.current || !a.can_mark;
   }
@@ -382,6 +390,10 @@
     for (const b of document.querySelectorAll(`[data-${group}-tab]`)) { const active = b.getAttribute(`data-${group}-tab`) === name; b.setAttribute("aria-selected", String(active)); b.tabIndex = active ? 0 : -1; }
     for (const pane of document.querySelectorAll(`[data-${group}-pane]`)) pane.hidden = pane.getAttribute(`data-${group}-pane`) !== name;
     pausePlayers();
+    if(group==='case'&&data&&['notes','history'].includes(name)){
+      const options={base:base(),feedback,readOnly:true,onReference:ref=>{if(ref.kind==='observation'){selectSubtab('case','integrity');selectSubtab('integrity','flags');const article=[...el('audit-flags').querySelectorAll('[data-event-key]')].find(e=>e.dataset.eventKey===ref.key);article?.scrollIntoView({block:'center'});article?.querySelector('.audit-play-evidence')?.click();}else if(ref.kind==='interruption'){selectSubtab('case','integrity');selectSubtab('integrity','connectivity');}else{el('audit-case-notes').dataset.focusNote=ref.key;selectSubtab('case','notes');}}};
+      if(name==='notes')AssessBridgeCasework.mountNotes(el('audit-case-notes'),options);else AssessBridgeCasework.mountHistory(el('audit-case-history'),options);
+    }
   }
   for (const group of ["case", "integrity"]) {
     const buttons = [...document.querySelectorAll(`[data-${group}-tab]`)];
@@ -461,12 +473,12 @@
     }
     host.hidden = false; el("identity-toggle").textContent = "Close verification images";
   });
-  el('mark-audited').addEventListener('click', async () => {
+  async function markAudited(resolution='') {
     if (!data || saving || !data.audit.can_mark || data.audit.current) return;
     const scope = caseFeedback, serial = caseSerial, url = base();
     saving = true; renderAudit(); notice(scope, 'audit-save-message', '');
     try {
-      const result = await api(`${url}/audit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_version: data.audit.version }) });
+      const result = await api(`${url}/audit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_version: data.audit.version,expected_outcome:data.audit.outcome_revision||0,resolution_reason:resolution }) });
       if (serial !== caseSerial || !scope.active) return;
       data.audit = { ...data.audit, ...result.audit };
       scope.notify({ id: 'audit-saved', text: 'Candidate marked as audited.' });
@@ -475,6 +487,23 @@
       if (error.status === 409) { data.audit.can_mark = false; data.audit.blocked_reason = null; }
       notice(scope, 'audit-save-message', error.message, 'error', error.status === 409 ? { label: 'Reload report', onClick: refreshCase } : undefined);
     } finally { saving = false; if (serial === caseSerial && data) renderAudit(); }
+  }
+  el('mark-audited').addEventListener('click',()=>{
+    if(data?.audit.concern){
+      const scope=caseFeedback,version=data.audit.version,outcome=data.audit.outcome_revision||0,url=base();
+      const dialog=AssessBridgeCasework.reason({scope,title:'Resolve audit concern',text:'Explain why this report is now satisfactory.',confirmLabel:'Resolve and mark audited',onConfirm:reason=>AssessBridgeCasework.request(url+'/audit',{expected_version:version,expected_outcome:outcome,resolution_reason:reason})});
+      dialog.result.then(async accepted=>{if(accepted&&scope.active){await refreshCase();if(caseFeedback.active&&base()===url)caseFeedback.notify({id:'resolved',text:'Audit concern resolved.'});}});
+    }else markAudited();
+  });
+  el('audit-needs-attention').addEventListener('click',()=>{
+    if(!data||data.review.published)return;const scope=caseFeedback,url=base(),version=data.audit.version,outcome=data.audit.outcome_revision||0;let body;
+    const dialog=AssessBridgeCasework.reason({scope,title:'Record audit concern',text:'Explain what needs to be addressed before this case can pass auditing.',confirmLabel:'Save concern',onConfirm:reason=>{if(!body||body.reason!==reason)body={request_key:crypto.randomUUID(),reason,expected_version:version,expected_outcome:outcome};return AssessBridgeCasework.request(url+'/concern',body);}});
+    dialog.result.then(async accepted=>{if(accepted&&scope.active){await refreshCase();if(caseFeedback.active&&base()===url)caseFeedback.notify({id:'concern-saved',text:'Audit concern recorded.'});}});
+  });
+  el('publication-hold').addEventListener('click',()=>{
+    if(!publication||publication.status==='published')return;const scope=candidateFeedback,url=`/api/auditor/assessments/${selectedExam.id}/hold`,version=publication.version,kind=publication.hold?'resolved':'held';let body;
+    const dialog=AssessBridgeCasework.reason({scope,title:kind==='held'?'Place publication on hold':'Resolve publication hold',text:kind==='held'?'Explain the assessment-wide issue that prevents publication.':'Explain how the assessment-wide issue was resolved.',confirmLabel:kind==='held'?'Save hold':'Resolve hold',onConfirm:reason=>{if(!body||body.reason!==reason)body={request_key:crypto.randomUUID(),reason,kind,expected_version:version};return AssessBridgeCasework.request(url,body);}});
+    dialog.result.then(async accepted=>{if(accepted&&scope.active){await loadCandidates();if(candidateFeedback.active&&`/api/auditor/assessments/${selectedExam?.id}/hold`===url)candidateFeedback.notify({id:'hold-saved',text:kind==='held'?'Publication placed on hold.':'Publication hold resolved.'});}});
   });
   el("sign-out").addEventListener("click", async () => {
     el("sign-out").disabled = true;
