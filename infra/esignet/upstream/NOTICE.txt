@@ -1,0 +1,7 @@
+init.sql, flow-esignet.yaml and LICENSE are from MOSIP eSignet, release v2.0.0,
+commit db528423dac7898ad546cb7b2f5f867a949676a7.
+Source: https://github.com/mosip/esignet/tree/v2.0.0/docker-compose
+License: Mozilla Public License 2.0 (see LICENSE).
+The setup script derives a local schema without the upstream sample identity.
+It derives a demo-only login flow without third-party CAPTCHA requirements.
+No upstream private client keys are used.

@@ -1,0 +1,1206 @@
+# Anchor for heading details
+# it contains heading & subheading details
+# logo of main application & client
+# one divider line as well
+heading_details: &heading_details
+  id: heading_details
+  resourceType: ELEMENT
+  type: BLOCK
+  category: BLOCK
+  align: center
+  components:
+    - category: DISPLAY
+      id: text_heading
+      label: "{{t(header:login_heading)}}"
+      resourceType: ELEMENT
+      type: TEXT
+      variant: HEADING_3
+      align: center
+    - category: DISPLAY
+      id: text_subheading
+      label: "<center><b>{{meta(application.name)}}</b> {{t(header:login_subheading)}}</center>"
+      resourceType: ELEMENT
+      type: RICH_TEXT
+      variant: SUBTITLE_2
+      align: center
+    - id: logo_block
+      type: STACK
+      resourceType: ELEMENT
+      direction: col
+      justify: center
+      components:
+        - category: DISPLAY
+          id: client_logo
+          resourceType: ELEMENT
+          type: IMAGE
+          src: "{{meta(application.logoUrl)}}"
+          alt: "{{t(signin:images.app_logo.alt)}}"
+          height: 52px
+          width: 52px
+        - category: DISPLAY
+          id: logo_divider
+          label: "&#x21CB;"
+          resourceType: ELEMENT
+          type: RICH_TEXT
+          height: 24px
+          width: 24px
+        - category: DISPLAY
+          id: app_logo
+          resourceType: ELEMENT
+          type: IMAGE
+          src: "/logo.png"
+          alt: "{{t(signin:images.app_logo.alt)}}"
+          height: 52px
+          width: 52px
+    - id: divider_block
+      type: DIVIDER
+
+# Anchor for UIN input, with validation
+prompt_uin: &prompt_uin
+  id: username_input
+  ref: username
+  type: TEXT_INPUT
+  label: "{{t(input:uin_label)}}"
+  required: true
+  placeholder: "{{t(input:uin_placeholder)}}"
+  validation:
+    - type: regex
+      value: ^[0-9]+$
+      message: "validation.uin.numeric"
+    - type: maxLength
+      value: 16
+      message: "validation.uin.length"
+    - type: minLength
+      value: 10
+      message: "validation.uin.length"
+
+# Anchor for Mobile number input, with validation
+prompt_mobile: &prompt_mobile
+  id: username_input
+  ref: username
+  type: PHONE_INPUT
+  label: "{{t(input:mobile_label)}}"
+  required: true
+  placeholder: "{{t(input:mobile_placeholder)}}"
+  postfix: "@phone"
+  prefixes:
+    - label: "+91"
+      value: "+91"
+      maxLength: 10
+      regex: ^[0-9]{10}$
+    - label: "+855"
+      value: "+855"
+      maxLength: 9
+      regex: ^[0-9]{9}$
+  validation:
+    - type: regex
+      value: ^[0-9]+$
+      message: "validation.mobile.numeric"
+    - type: maxLength
+      value: 11
+      message: "validation.mobile.length"
+    - type: minLength
+      value: 9
+      message: "validation.mobile.length"
+
+# Anchor for Email input, with validation
+prompt_email: &prompt_email
+  id: username_input
+  ref: username
+  type: EMAIL_INPUT
+  label: "{{t(input:email_label)}}"
+  required: true
+  placeholder: "{{t(input:email_placeholder)}}"
+  postfix: "@email"
+  validation:
+    - type: regex
+      value: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+      message: "validation.email.format"
+
+# Anchor for NRC ID input, without validation
+prompt_nrc: &prompt_nrc
+  id: username_input
+  ref: username
+  type: TEXT_INPUT
+  label: "{{t(input:nrc_label)}}"
+  required: true
+  postfix: "@nrc"
+  placeholder: "{{t(input:nrc_placeholder)}}"
+
+# Anchor for Password input, with validation
+prompt_password: &prompt_password
+  id: password_input
+  ref: password
+  type: PASSWORD_INPUT
+  category: FIELD
+  inputType: password
+  label: "{{t(input:password_label)}}"
+  placeholder: "{{t(input:password_placeholder)}}"
+  required: true
+  resourceType: ELEMENT
+
+# Anchor for Captcha component
+captcha_box: &captcha_box
+  id: CAPTCHA_BOX
+  ref: captcha_token
+  type: CUSTOM
+  category: MISCELLANEOUS
+  resourceType: ELEMENT
+  required: true
+  captcha:
+    provider: ${MOSIP_ESIGNET_CAPTCHA_SITE_PROVIDER}
+    siteKey: ${MOSIP_ESIGNET_CAPTCHA_SITE_KEY}
+    theme: light
+    size: normal
+
+# Anchor for otp's required inputs
+otp_inputs: &otp_inputs
+  - ref: username_input
+    identifier: username
+    type: TEXT_INPUT
+    required: true
+  - ref: CAPTCHA_BOX
+    identifier: captcha_token
+    type: CUSTOM
+    required: true
+
+# Anchor for password's required inputs
+password_inputs: &password_inputs
+  - ref: username_input
+    identifier: username
+    type: TEXT_INPUT
+    required: true
+  - ref: password_input
+    identifier: password
+    type: PASSWORD_INPUT
+    required: true
+  - ref: CAPTCHA_BOX
+    identifier: captcha_token
+    type: CUSTOM
+    required: true
+
+# Anchor for Submit button
+# default id is submit_uin, it can be changed
+# default label is Continue, that also can be changed
+submit_button: &submit_button
+  id: submit_uin
+  label: "{{t(button:continue)}}"
+  type: ACTION
+  variant: PRIMARY
+  category: ACTION
+  eventType: SUBMIT
+  resourceType: ELEMENT
+
+# Anchor for Trigger button
+trigger_button: &trigger_button
+  <<: *submit_button
+  variant: OUTLINE
+  eventType: RESET
+
+# Anchor for title for the page with back button
+page_title: &page_title
+  id: BACK_BUTTON
+  ref: back_button
+  type: CUSTOM
+  label: "{{t(header:select_login_id)}}"
+  category: MISCELLANEOUS
+  resourceType: ELEMENT
+
+login_id_header: &login_id_header
+  id: block_login_id
+  type: STACK
+  direction: col
+  resourceType: ELEMENT
+  justify: stretch
+  items: 2
+
+login_uin_button: &login_uin_button
+  <<: *trigger_button
+  id: login_id_uin
+  label: "{{t(button:login_id_uin)}}"
+  classes: left-align-button login-id-button
+  startIcon: "/images/vid_icon.svg"
+
+login_mobile_button: &login_mobile_button
+  <<: *trigger_button
+  id: login_id_mobile
+  label: "{{t(button:login_id_mobile)}}"
+  classes: left-align-button login-id-button
+  startIcon: "/images/mobile_icon.svg"
+
+login_email_button: &login_email_button
+  <<: *trigger_button
+  id: login_id_email
+  label: "{{t(button:login_id_email)}}"
+  classes: left-align-button login-id-button
+  startIcon: "/images/email_icon.svg"
+
+login_nrc_button: &login_nrc_button
+  <<: *trigger_button
+  id: login_id_nrc
+  label: "{{t(button:login_id_nrc)}}"
+  classes: left-align-button login-id-button
+  startIcon: "/images/nrc_id_icon.svg"
+
+login_id_uin: &login_id_uin
+  <<: *login_id_header
+  components:
+    - <<: *login_uin_button
+      classes: left-align-button login-id-button login-id-button--active
+    - *login_mobile_button
+    - *login_email_button
+    - *login_nrc_button
+
+login_id_mobile: &login_id_mobile
+  <<: *login_id_header
+  components:
+    - *login_uin_button
+    - <<: *login_mobile_button
+      classes: left-align-button login-id-button login-id-button--active
+    - *login_email_button
+    - *login_nrc_button
+
+login_id_email: &login_id_email
+  <<: *login_id_header
+  components:
+    - *login_uin_button
+    - *login_mobile_button
+    - <<: *login_email_button
+      classes: left-align-button login-id-button login-id-button--active
+    - *login_nrc_button
+
+login_id_nrc: &login_id_nrc
+  <<: *login_id_header
+  components:
+    - *login_uin_button
+    - *login_mobile_button
+    - *login_email_button
+    - <<: *login_nrc_button
+      classes: left-align-button login-id-button login-id-button--active
+
+id: flow-esignet
+handle: flow-esignet
+name: MOSIP Esignet Flow
+flowType: AUTHENTICATION
+interceptors:
+  - name: CaptchaInterceptor
+    mode: PRE_NODE
+    scope: SELECTED
+    applyto:
+      - send_mosip_otp_email
+      - send_mosip_otp_mobile
+      - send_mosip_otp_uin
+      - send_mosip_otp_nrc
+      - basic_cred_auth_uin
+      - basic_cred_auth_mobile
+      - basic_cred_auth_email
+      - basic_cred_auth_nrc
+      - basic_kbi_auth
+
+# Anchor for the per-flow-session cap on OTP generate/resend calls, applied to every
+# eSignetOtpExecutor node so RESEND_OTP can't be clicked unboundedly.
+otp_max_attempts: &otp_max_attempts
+  maxAttempts: "3"
+
+nodes:
+  - id: start
+    type: START
+    onSuccess: seed_transaction_id
+
+  - id: seed_transaction_id
+    type: TASK_EXECUTION
+    executor:
+      name: eSignetTransactionIDExecutor
+    onSuccess: prompt_acr
+
+  - id: prompt_acr
+    type: PROMPT
+    variant: LOGIN_OPTIONS
+    meta:
+      components:
+        - *heading_details
+        - id: acr_block
+          type: BLOCK
+          resourceType: ELEMENT
+          category: BLOCK
+          direction: col
+          justify: center
+          components:
+            - id: acr_text_heading
+              type: TEXT
+              label: "{{t(header:select_login_mode)}}"
+              align: left
+              variant: HEADING_5
+              category: DISPLAY
+              resourceType: ELEMENT
+            - <<: *trigger_button
+              id: acr_otp
+              label: "{{t(button:login_otp)}}"
+              classes: left-align-button
+              startIcon: "/images/otp_icon.svg"
+            - <<: *trigger_button
+              id: acr_password
+              label: "{{t(button:login_password)}}"
+              classes: left-align-button
+              startIcon: "/images/pwd_icon.svg"
+            - <<: *trigger_button
+              id: acr_bio
+              label: "{{t(button:login_biometrics)}}"
+              classes: left-align-button
+              startIcon: "/images/bio_icon.svg"
+            - <<: *trigger_button
+              id: acr_kbi
+              label: "{{t(button:login_kbi)}}"
+              classes: left-align-button
+              startIcon: "/images/kbi_icon.svg"
+    prompts:
+      - action:
+          ref: acr_otp
+          nextNode: prompt_uin_otp
+      - action:
+          ref: acr_password
+          nextNode: prompt_uin_credentials
+      - action:
+          ref: acr_bio
+          nextNode: prompt_uin_bio
+      - action:
+          ref: acr_kbi
+          nextNode: prompt_kbi_details
+    properties:
+      authMethodMapping:
+        "mosip:idp:acr:generated-code": acr_otp
+        "mosip:idp:acr:password": acr_password
+        "mosip:idp:acr:biometrics": acr_bio
+        "mosip:idp:acr:knowledge": acr_kbi
+
+  - id: prompt_uin_otp
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_otp
+          components:
+            - *page_title
+            - *login_id_uin
+            - *prompt_uin
+            - *captcha_box
+            - <<: *submit_button
+              id: submit_uin
+              label: "{{t(button:get_otp)}}"
+    prompts:
+      - inputs: *otp_inputs
+        action:
+          ref: submit_uin
+          nextNode: send_mosip_otp_uin
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_otp
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_otp
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_otp
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_mobile_otp
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_otp
+          components:
+            - *page_title
+            - *login_id_mobile
+            - *prompt_mobile
+            - *captcha_box
+            - <<: *submit_button
+              id: submit_uin
+              label: "{{t(button:get_otp)}}"
+    prompts:
+      - inputs: *otp_inputs
+        action:
+          ref: submit_uin
+          nextNode: send_mosip_otp_mobile
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_otp
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_otp
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_otp
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_email_otp
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_otp
+          components:
+            - *page_title
+            - *login_id_email
+            - *prompt_email
+            - *captcha_box
+            - <<: *submit_button
+              id: submit_uin
+              label: "{{t(button:get_otp)}}"
+    prompts:
+      - inputs: *otp_inputs
+        action:
+          ref: submit_uin
+          nextNode: send_mosip_otp_email
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_otp
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_otp
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_otp
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_nrc_otp
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_otp
+          components:
+            - *page_title
+            - *login_id_nrc
+            - *prompt_nrc
+            - *captcha_box
+            - <<: *submit_button
+              id: submit_uin
+              label: "{{t(button:get_otp)}}"
+    prompts:
+      - inputs: *otp_inputs
+        action:
+          ref: submit_uin
+          nextNode: send_mosip_otp_nrc
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_otp
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_otp
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_otp
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: send_mosip_otp_uin
+    type: TASK_EXECUTION
+    properties: *otp_max_attempts
+    executor:
+      name: eSignetOtpExecutor
+    onSuccess: prompt_otp
+    onIncomplete: prompt_uin_otp
+
+  - id: send_mosip_otp_mobile
+    type: TASK_EXECUTION
+    properties: *otp_max_attempts
+    executor:
+      name: eSignetOtpExecutor
+    onSuccess: prompt_otp
+    onIncomplete: prompt_mobile_otp
+
+  - id: send_mosip_otp_email
+    type: TASK_EXECUTION
+    properties: *otp_max_attempts
+    executor:
+      name: eSignetOtpExecutor
+    onSuccess: prompt_otp
+    onIncomplete: prompt_email_otp
+
+  - id: send_mosip_otp_nrc
+    type: TASK_EXECUTION
+    properties: *otp_max_attempts
+    executor:
+      name: eSignetOtpExecutor
+    onSuccess: prompt_otp
+    onIncomplete: prompt_nrc_otp
+
+  # Dedicated to the RESEND_OTP action from prompt_otp: the user is already on the OTP-entry
+  # screen at that point (not one of the four identifier prompts above), so a failed resend
+  # routes back to prompt_otp itself rather than to a channel-specific prompt.
+  - id: send_mosip_otp
+    type: TASK_EXECUTION
+    properties: *otp_max_attempts
+    executor:
+      name: eSignetOtpExecutor
+    onSuccess: prompt_otp
+    onIncomplete: prompt_otp
+
+  - id: prompt_otp
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_otp
+          type: BLOCK
+          category: BLOCK
+          components:
+            - <<: *page_title
+              label: "{{t(otp:enter_otp_title)}}"
+            - id: otp_input
+              ref: otp
+              type: OTP_INPUT
+              label: "{{t(otp:otp_sent_msg)}}"
+              category: FIELD
+              required: true
+            - <<: *submit_button
+              id: action_submit_otp
+              label: "{{t(button:verify)}}"
+            - id: resend_otp_block
+              type: BLOCK
+              category: BLOCK
+              resourceType: ELEMENT
+              components:
+                - id: RESEND_OTP
+                  type: CUSTOM
+                  ref: resend_otp_timer
+                  category: MISCELLANEOUS
+                  resourceType: ELEMENT
+                  timeLeft: 20
+                  variant: primary
+                  label: "otp.resend_otp"
+                  captcha:
+                    provider: ${MOSIP_ESIGNET_CAPTCHA_SITE_PROVIDER}
+                    siteKey: ${MOSIP_ESIGNET_CAPTCHA_SITE_KEY}
+    prompts:
+      - inputs:
+          - ref: otp_input
+            identifier: otp
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: action_submit_otp
+          nextNode: basic_auth
+      - action:
+          ref: RESEND_OTP
+          nextNode: send_mosip_otp
+      - action:
+          ref: BACK_BUTTON
+          nextNode: clear_otp_username
+
+  - id: clear_otp_username
+    type: TASK_EXECUTION
+    executor:
+      name: eSignetClearInputsExecutor
+      inputs:
+        - identifier: username
+          type: TEXT_INPUT
+          required: true
+    onSuccess: prompt_uin_otp
+
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: otp_input
+          identifier: otp
+          type: OTP_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_otp
+
+  - id: prompt_uin_credentials
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_credentials
+          resourceType: ELEMENT
+          type: BLOCK
+          category: BLOCK
+          components:
+            - *page_title
+            - *login_id_uin
+            - *prompt_uin
+            - *prompt_password
+            - *captcha_box
+            - <<: *submit_button
+              id: password_authenticate
+              label: "{{t(button:login)}}"
+    prompts:
+      - inputs: *password_inputs
+        action:
+          ref: password_authenticate
+          nextNode: basic_cred_auth_uin
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_credentials
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_credentials
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_credentials
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_mobile_credentials
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_credentials
+          resourceType: ELEMENT
+          type: BLOCK
+          category: BLOCK
+          components:
+            - *page_title
+            - *login_id_mobile
+            - *prompt_mobile
+            - *prompt_password
+            - *captcha_box
+            - <<: *submit_button
+              id: password_authenticate
+              label: "{{t(button:login)}}"
+    prompts:
+      - inputs: *password_inputs
+        action:
+          ref: password_authenticate
+          nextNode: basic_cred_auth_mobile
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_credentials
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_credentials
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_credentials
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_email_credentials
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_credentials
+          resourceType: ELEMENT
+          type: BLOCK
+          category: BLOCK
+          components:
+            - *page_title
+            - *login_id_email
+            - *prompt_email
+            - *prompt_password
+            - *captcha_box
+            - <<: *submit_button
+              id: password_authenticate
+              label: "{{t(button:login)}}"
+    prompts:
+      - inputs: *password_inputs
+        action:
+          ref: password_authenticate
+          nextNode: basic_cred_auth_email
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_credentials
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_credentials
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_credentials
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_nrc_credentials
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_credentials
+          resourceType: ELEMENT
+          type: BLOCK
+          category: BLOCK
+          components:
+            - *page_title
+            - *login_id_nrc
+            - *prompt_nrc
+            - *prompt_password
+            - *captcha_box
+            - <<: *submit_button
+              id: password_authenticate
+              label: "{{t(button:login)}}"
+    prompts:
+      - inputs: *password_inputs
+        action:
+          ref: password_authenticate
+          nextNode: basic_cred_auth_nrc
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_credentials
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_credentials
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_credentials
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: basic_cred_auth_uin
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: password_input
+          identifier: password
+          type: PASSWORD_INPUT
+          required: true
+        - ref: CAPTCHA_BOX
+          identifier: captcha_token
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_uin_credentials
+
+  - id: basic_cred_auth_mobile
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: password_input
+          identifier: password
+          type: PASSWORD_INPUT
+          required: true
+        - ref: CAPTCHA_BOX
+          identifier: captcha_token
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_mobile_credentials
+
+  - id: basic_cred_auth_email
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: password_input
+          identifier: password
+          type: PASSWORD_INPUT
+          required: true
+        - ref: CAPTCHA_BOX
+          identifier: captcha_token
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_email_credentials
+
+  - id: basic_cred_auth_nrc
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: password_input
+          identifier: password
+          type: PASSWORD_INPUT
+          required: true
+        - ref: CAPTCHA_BOX
+          identifier: captcha_token
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_nrc_credentials
+
+  - id: prompt_uin_bio
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_biometrics
+          components:
+            - *page_title
+            - *login_id_uin
+            - *prompt_uin
+            - *submit_button
+    prompts:
+      - inputs:
+          - ref: username_input
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: submit_uin
+          nextNode: prompt_biometric
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_bio
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_bio
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_bio
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_mobile_bio
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_biometrics
+          components:
+            - *page_title
+            - *login_id_mobile
+            - *prompt_mobile
+            - *submit_button
+    prompts:
+      - inputs:
+          - ref: username_input
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: submit_uin
+          nextNode: prompt_biometric
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_bio
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_bio
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_bio
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_email_bio
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_biometrics
+          components:
+            - *page_title
+            - *login_id_email
+            - *prompt_email
+            - *submit_button
+    prompts:
+      - inputs:
+          - ref: username_input
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: submit_uin
+          nextNode: prompt_biometric
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_bio
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_bio
+      - action:
+          ref: login_id_nrc
+          nextNode: prompt_nrc_bio
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_nrc_bio
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - type: BLOCK
+          id: block_biometrics
+          components:
+            - *page_title
+            - *login_id_nrc
+            - *prompt_nrc
+            - *submit_button
+    prompts:
+      - inputs:
+          - ref: username_input
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: submit_uin
+          nextNode: prompt_biometric
+      - action:
+          ref: login_id_uin
+          nextNode: prompt_uin_bio
+      - action:
+          ref: login_id_mobile
+          nextNode: prompt_mobile_bio
+      - action:
+          ref: login_id_email
+          nextNode: prompt_email_bio
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: prompt_biometric
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_biometrics
+          type: BLOCK
+          components:
+            - <<: *page_title
+              label: "{{t(biometric:title)}}"
+            - id: SBI_ID
+              ref: biometric
+              type: CUSTOM
+              category: MISCELLANEOUS
+              resourceType: ELEMENT
+    prompts:
+      - inputs:
+          - ref: SBI_ID
+            identifier: biometric
+            type: CUSTOM
+            required: true
+        action:
+          ref: SBI_ID
+          nextNode: basic_bio_auth
+      - action:
+          ref: BACK_BUTTON
+          nextNode: clear_bio_username
+
+  - id: clear_bio_username
+    type: TASK_EXECUTION
+    executor:
+      name: eSignetClearInputsExecutor
+      inputs:
+        - identifier: username
+          type: TEXT_INPUT
+          required: true
+    onSuccess: prompt_uin_bio
+
+  - id: basic_bio_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: SBI_ID
+          identifier: biometric
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_biometric
+
+  - id: prompt_kbi_details
+    type: PROMPT
+    meta:
+      components:
+        - *heading_details
+        - id: block_kbi
+          type: BLOCK
+          components:
+            - <<: *page_title
+              label: "{{t(button:login_kbi)}}"
+            - id: username_input
+              ref: username
+              label: "{{t(input:policy_number_label)}}"
+              placeholder: "{{t(input:policy_number_placeholder)}}"
+              type: TEXT_INPUT
+              required: true
+              validation:
+                - type: regex
+                  value: ^[0-9]+$
+                  message: "validation.policy.numeric"
+                - type: maxLength
+                  value: 50
+                  message: "validation.policy.length"
+                - type: minLength
+                  value: 8
+                  message: "validation.policy.length"
+            - id: fullname_input
+              ref: fullName
+              type: TEXT_INPUT
+              label: "{{t(input:fullname_label)}}"
+              required: true
+              placeholder: "{{t(input:fullname_placeholder)}}"
+            - id: dob_input
+              ref: dob
+              type: DATE_INPUT
+              label: "{{t(input:dob_label)}}"
+              required: true
+              placeholder: "{{t(input:dob_placeholder)}}"
+              dateFormat: "yyyy-MM-dd"
+            - *captcha_box
+            - <<: *submit_button
+              id: submit_kbi_details
+              label: "{{t(button:login)}}"
+    prompts:
+      - inputs:
+          - ref: username_input
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: fullname_input
+            identifier: fullName
+            type: TEXT_INPUT
+            required: true
+          - ref: dob_input
+            identifier: dob
+            type: DATE_INPUT
+            required: true
+          - ref: CAPTCHA_BOX
+            identifier: captcha_token
+            type: CUSTOM
+            required: true
+        action:
+          ref: submit_kbi_details
+          nextNode: basic_kbi_auth
+      - action:
+          ref: BACK_BUTTON
+          nextNode: prompt_acr
+
+  - id: basic_kbi_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+      inputs:
+        - ref: username_input
+          identifier: username
+          type: TEXT_INPUT
+          required: true
+        - ref: fullname_input
+          identifier: fullName
+          type: PASSWORD_INPUT
+          required: true
+        - ref: dob_input
+          identifier: dob
+          type: PASSWORD_INPUT
+          required: true
+        - ref: CAPTCHA_BOX
+          identifier: captcha_token
+          type: PASSWORD_INPUT
+          required: true
+    onSuccess: authorization_check
+    onIncomplete: prompt_kbi_details
+
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: eSignetAuthorizationExecutor
+    onSuccess: consent_check
+
+  - id: consent_check
+    type: TASK_EXECUTION
+    properties:
+      timeout: "120"
+      failOnDeny: true
+    executor:
+      name: ConsentExecutor
+      inputs:
+        - ref: input_consent
+          identifier: consent_decisions
+          type: CONSENT_INPUT
+          required: true
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - id: timer_consent
+          type: TIMER
+          category: DISPLAY
+          resourceType: ELEMENT
+          label: "{{t(consent:timer_label)}} {time}"
+        - id: text_consent_title
+          type: TEXT
+          label: "{{meta(application.name)}} {{t(consent:title)}}"
+          variant: HEADING_5
+          category: DISPLAY
+          resourceType: ELEMENT
+          align: center
+        - id: block_consent
+          type: BLOCK
+          category: BLOCK
+          resourceType: ELEMENT
+          components:
+            - id: input_consent
+              type: CONSENT
+              category: DISPLAY
+            - <<: *submit_button
+              id: action_allow
+              label: "{{t(consent:allow)}}"
+            - <<: *trigger_button
+              id: action_deny
+              label: "{{t(consent:deny)}}"
+    prompts:
+      - inputs:
+          - ref: input_consent
+            identifier: consent_decisions
+            type: CONSENT_INPUT
+            required: true
+        action:
+          ref: action_allow
+          nextNode: consent_check
+      - action:
+          ref: action_deny
+          nextNode: consent_check
+
+  - id: auth_assert
+    type: TASK_EXECUTION
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: end
+
+  - id: end
+    type: END

@@ -164,3 +164,6 @@ migrate_readiness()
 
 from migrate_retention import migrate as migrate_retention
 migrate_retention()
+
+from migrate_esignet import migrate as migrate_esignet
+migrate_esignet()

@@ -206,8 +206,11 @@ def build_pdf(data,report,row,audit,monitoring,events,media,notes,timeline,ident
   fact('Decision',human(decision['action']));fact('Reason',decision['reason']);fact('Reviewer',decision['reviewer']);fact('Recorded at',moment(decision['created_at']));fact('Previous score',decision.get('previous',{}).get('score'));fact('Recorded final score',decision['score'])
   for index,item in decision['grades'].items():para(f"Written question {int(index)+1}: {item['marks']} / 1. Reason: {item['reason']}")
  section('Identity verification')
- fact('Outcome',human((report.get('identity') or {}).get('status')))
- fact('Name similarity',identity.get('name_similarity'));fact('Face similarity (cosine score)',identity.get('face_similarity'))
+ if (report.get('identity') or {}).get('verification_method')=='esignet_demo':
+  fact('Outcome','Demo identity authenticated');fact('Method','Fictional eSignet identity and session photo; no card or portrait comparison')
+ else:
+  fact('Outcome',human((report.get('identity') or {}).get('status')))
+  fact('Name similarity',identity.get('name_similarity'));fact('Face similarity (cosine score)',identity.get('face_similarity'))
  section('Readiness and acknowledgements')
  readiness=report.get('readiness',{})
  for check in readiness.get('checks',[]):

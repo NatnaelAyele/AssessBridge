@@ -614,7 +614,7 @@ function renderSummary() {
   byId("summary-schedule").textContent = start || end ? `${formatDate(start)} – ${formatDate(end)}` : "Not set";
   const prohibitedItems = selectedChoices(".prohibited-item");
   const identityPolicy = document.querySelector('input[name="identity-policy"]:checked').value;
-  const identityLabel = identityPolicy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
+  const identityLabel = identityPolicy === 'Fayda demo (eSignet)' ? 'Fayda demo authentication' : identityPolicy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
   byId("summary-rules").textContent = `${prohibitedItems.length} prohibited · ${identityLabel}`;
   const questionList = byId("summary-question-list");
   const candidateList = byId("summary-candidate-list");
@@ -656,7 +656,7 @@ function renderDetail(assessment) {
   detail.dataset.endsAt = assessment.ends_at;
   byId("detail-title").textContent = assessment.title;
   byId("detail-description").textContent = assessment.description || "No instructions provided.";
-  byId("detail-identity").textContent = assessment.identity_policy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
+  byId("detail-identity").textContent = assessment.identity_policy === 'Fayda demo (eSignet)' ? 'Fayda demo authentication' : assessment.identity_policy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
   byId("detail-code").textContent = assessment.internal_reference || "Not set";
   byId("detail-duration").textContent = `${assessment.duration_minutes} min`;
   byId("detail-questions").textContent = String(assessment.question_count);
@@ -935,6 +935,10 @@ fetch("/api/auth/me", { credentials: "same-origin" })
   });
 
 addRosterRow();
+fetch('/api/identity-options', {credentials:'same-origin'}).then(response => response.ok ? response.json() : {}).then(options => {
+  const option = byId('demo-identity-option');
+  if (option) option.hidden = !options.esignet_demo;
+}).catch(() => {});
 updateRoster();
 showStep("basics");
 syncQuestionType();

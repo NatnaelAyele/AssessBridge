@@ -58,8 +58,13 @@ def encrypt_rncryptor_v3(plain: bytes, password: str) -> bytes:
     return body + hmac.new(hmac_key, body, hashlib.sha256).digest()
 
 
-def build_settings(base_url: str, start_url: str, quit_password: str) -> dict:
+def build_settings(base_url: str, start_url: str, quit_password: str, identity_policy=None) -> dict:
     parsed = urlsplit(base_url)
+    rules = [{"active": True, "action": 1, "regex": False, "expression": parsed.netloc + "/*"}]
+    from . import esignet
+    from .config import ESIGNET_ISSUER
+    if identity_policy == esignet.POLICY and esignet.enabled():
+        rules.append({"active": True, "action": 1, "regex": False, "expression": urlsplit(ESIGNET_ISSUER).netloc + "/*"})
     return {
         "sebConfigPurpose": 0,
         "startURL": start_url,
@@ -85,7 +90,7 @@ def build_settings(base_url: str, start_url: str, quit_password: str) -> dict:
         "sendBrowserExamKey": False,
         "URLFilterEnable": True,
         "URLFilterEnableContentFilter": False,
-        "URLFilterRules": [{"active": True, "action": 1, "regex": False, "expression": parsed.netloc + "/*"}],
+        "URLFilterRules": rules,
         "removeBrowserProfile": True,
         "removeLocalStorage": True,
         "restartExamUseStartURL": False,
@@ -93,8 +98,8 @@ def build_settings(base_url: str, start_url: str, quit_password: str) -> dict:
     }
 
 
-def build_encrypted_configuration(base_url: str, start_url: str, config_password: str, quit_password: str) -> tuple[str, bytes]:
-    settings = build_settings(base_url, start_url, quit_password)
+def build_encrypted_configuration(base_url: str, start_url: str, config_password: str, quit_password: str, identity_policy=None) -> tuple[str, bytes]:
+    settings = build_settings(base_url, start_url, quit_password, identity_policy)
     key = hashlib.sha256(json.dumps(seb_json(settings), separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
     xml = plistlib.dumps(settings, fmt=plistlib.FMT_XML, sort_keys=True)
     data = gzip.compress(b"pswd" + encrypt_rncryptor_v3(gzip.compress(xml), config_password))

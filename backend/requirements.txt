@@ -1,0 +1,11 @@
+fastapi==0.142.2
+uvicorn==0.54.0
+bcrypt==5.0.0
+python-jose[cryptography]==3.5.0
+PyJWT[crypto]==2.15.1
+mysql-connector-python==26.7.0
+python-dotenv==1.2.3
+opencv-python-headless==4.14.0.94
+onnxruntime==1.31.1
+
+reportlab==5.1.0

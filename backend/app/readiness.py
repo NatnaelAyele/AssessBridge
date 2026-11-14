@@ -50,7 +50,9 @@ def requirements(invitation,candidate,client,fingerprint,policy,method):
     with database() as db:
         c=db.cursor(dictionary=True);exam=load_exam(c,invitation)
         c.execute('SELECT 1 FROM assessment_consents WHERE invitation_id=%s AND candidate_user_id=%s AND policy_version=%s',(invitation,candidate,policy));consent=bool(c.fetchone())
-        c.execute("SELECT 1 FROM assessment_identity_checks WHERE invitation_id=%s AND candidate_user_id=%s AND status='passed' AND access_fingerprint=%s AND evidence_expires_at>UTC_TIMESTAMP()",(invitation,candidate,fingerprint));identity=bool(c.fetchone())
+        from . import esignet
+        method_expected=esignet.METHOD if exam['identity_policy']==esignet.POLICY else 'card_face'
+        c.execute("SELECT 1 FROM assessment_identity_checks WHERE invitation_id=%s AND candidate_user_id=%s AND status='passed' AND access_fingerprint=%s AND evidence_expires_at>UTC_TIMESTAMP() AND verification_method=%s",(invitation,candidate,fingerprint,method_expected));identity=bool(c.fetchone()) and (method_expected!='esignet_demo' or esignet.enabled())
     return {'instructions_version':instructions_version(exam),'consent_passed':consent,'identity_passed':identity,'seb_method':method,'seb_required':method!='not_required'}
 
 def confirm(invitation,candidate,client,fingerprint,policy,method,payload):
