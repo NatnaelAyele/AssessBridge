@@ -1,4 +1,0 @@
-# Container entrypoints must also retain Unix line endings on Windows clones.
-infra/esignet/*.sh text eol=lf
-infra/esignet/upstream/*.sql text eol=lf
-infra/esignet/upstream/*.yaml text eol=lf
