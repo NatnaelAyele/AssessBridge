@@ -13,9 +13,9 @@ def config_hash(url: str, key: str | None = None) -> str:
     return hashlib.sha256((url.split("#", 1)[0] + (key or SEB_CONFIG_KEY)).encode("utf-8")).hexdigest()
 
 
-def require_seb(request: Request, page: str | tuple[str, ...], key: str | None = None) -> None:
+def require_seb(request: Request, page: str | tuple[str, ...], key: str | None = None) -> str:
     if not SEB_REQUIRED:
-        return
+        return "not_required"
     actual_key = (key or SEB_CONFIG_KEY).lower()
     if not re.fullmatch(r"[0-9a-f]{64}", actual_key):
         raise HTTPException(status_code=503, detail="SEB configuration is not installed on this server")
@@ -29,7 +29,8 @@ def require_seb(request: Request, page: str | tuple[str, ...], key: str | None =
     request_url = SEB_BASE_URL + request.url.path
     if request.url.query:
         request_url += "?" + request.url.query
-    if (any(hmac.compare_digest(js_proof, config_hash(SEB_BASE_URL + allowed_page, actual_key)) for allowed_page in pages)
-            or hmac.compare_digest(native_proof, config_hash(request_url, actual_key))):
-        return
+    if any(hmac.compare_digest(js_proof, config_hash(SEB_BASE_URL + allowed_page, actual_key)) for allowed_page in pages):
+        return "javascript_config_key"
+    if hmac.compare_digest(native_proof, config_hash(request_url, actual_key)):
+        return "native_config_key"
     raise HTTPException(status_code=403, detail="Open this assessment with the approved Safe Exam Browser configuration")

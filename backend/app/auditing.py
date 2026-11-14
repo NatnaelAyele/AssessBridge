@@ -59,6 +59,8 @@ def _evidence_version(cursor, session_id):
     revision = _version(cursor, session_id)
     snapshot = {"review_revision": revision}
     queries = {
+        "readiness": "SELECT r.id,r.passed FROM assessment_readiness_records r JOIN assessment_exam_sessions s ON s.invitation_id=r.invitation_id WHERE s.id=%s ORDER BY r.id",
+        "environment": "SELECT e.id FROM assessment_environment_events e JOIN assessment_exam_sessions s ON s.invitation_id=e.invitation_id WHERE s.id=%s ORDER BY e.id",
         "connectivity": "SELECT event_type,occurred_at,details_json FROM assessment_connectivity_events WHERE session_id=%s ORDER BY occurred_at,id",
         "connectivity_findings": "SELECT incident_event_id,revision,finding,reason,reviewer_user_id,created_at FROM assessment_connectivity_findings WHERE session_id=%s ORDER BY revision",
         "session": "SELECT submitted_at,disqualified_at,interrupted_at,interruption_reason,disqualification_reason,current_index FROM assessment_exam_sessions WHERE id=%s",

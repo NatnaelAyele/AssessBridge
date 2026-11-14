@@ -14,6 +14,7 @@ window.employerReview = (() => {
     framing_changed: "Framing changed", audio_clipping: "Audio clipping", digital_audio_silence: "Digital audio silence",
     identity_reference_unavailable: "Identity reference unavailable", video_analysis_unavailable: "Video analysis unavailable",
     audio_analysis_unavailable: "Audio analysis unavailable", video_coverage_gap: "Video coverage gap", audio_coverage_gap: "Audio coverage gap" };
+  let resultController = null, resultOwner = null;
   let assessments = null, initPromise = null, cards = [], cardsError = false, assessmentId = null;
   let report = null, monitoring = null, recording = null;
   let fullParts = [], fullIndex = 0, mainControls = null, inlinePlayback = null;
@@ -31,6 +32,7 @@ window.employerReview = (() => {
   }
   function notifySaved(scope, text) { if (reviewVisible) scope.notify({ id: 'saved', text }); }
   function deactivate() {
+    resultController?.destroy(); resultController = null; resultOwner = null;
     for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
     reviewVisible = false; ++activationSerial; ++cardLoading;
     indexMessages.clearAll(); cardMessages.clearAll(); sessionMessages.clearAll(); pauseMedia();
@@ -280,13 +282,14 @@ window.employerReview = (() => {
     if (busy) return;
     if (sessionReadOnly) closeReadOnlyReport();
     if (tab !== "review") pauseMedia();
-    if (report) return;
+    if (report) { if (tab === "results") renderResults(); return; }
     message(tab === 'results' ? 'results-message' : 'review-exam-load-message', 'Loading assessments...');
     try { await initialize(true, token); if (token === activationSerial) message('review-exam-load-message'); }
     catch (error) { if (token !== activationSerial) return; message(tab === "results" ? "results-message" : "review-exam-load-message", error.message, true, 0, { label: "Retry", onClick: () => activate(tab) }); }
   }
   async function loadCards() {
     const serial = ++cardLoading, owner = assessmentId;
+    if (resultOwner !== owner) { resultController?.destroy(); resultController = null; resultOwner = null; }
     if (!assessmentId) { cards = []; cardsError = false; renderCards(); renderResults(); return; }
     message("review-queue-message", "Loading candidates…");
     message("results-message");
@@ -326,36 +329,11 @@ window.employerReview = (() => {
     if (!filtered.length && !cardsError) list.append(node("p", "review-empty", cards.length ? "No candidates match these filters." : "No candidates invited."));
   }
   function renderResults() {
-    const table = el("review-results-table"); table.replaceChildren();
-    el("results-count").textContent = `${cards.length} ${cards.length === 1 ? "candidate" : "candidates"}`;
-    for (const card of cards) {
-      const row = node("tr");
-      const candidate = node("td", "results-candidate"); candidate.dataset.label = "Candidate";
-      const person = node("div", "results-person"); person.append(node("strong", "", card.name), node("span", "review-muted", card.email)); candidate.append(person);
-      const attempt = node("td", "", titles[card.attempt_state] || "Not started"); attempt.dataset.label = "Exam status";
-      const completed = card.attempt_state === "submitted";
-      const automatic = node("td", "", completed && card.objective_possible > 0 ? `${card.objective_earned} / ${card.objective_possible}` : "—"); automatic.dataset.label = "MCQ score";
-      const final = node("td", "results-final"); final.dataset.label = "Final result";
-      const finalValue = node("div", "results-value");
-      if (card.outcome === "disqualified") {
-        finalValue.append(node("strong", "results-disqualified", "Disqualified"));
-        finalValue.append(node("span", "review-muted", card.attempt_state === "disqualified" ? "Exam ended early" : "Reviewer decision"));
-      } else if (card.decision) {
-        finalValue.append(node("strong", "", score(card.score, card.possible)));
-        finalValue.append(node("span", "review-muted", card.decision.action === "change_score" ? "Score changed" : "Score kept"));
-      } else {
-        finalValue.append(node("span", "review-muted", card.attempt_state === "submitted" ? "Awaiting review" : "—"));
-      }
-      final.append(finalValue);
-      const action = node("td", "results-action"); action.dataset.label = "Case report";
-      if (card.has_session) {
-        const button = node("button", "secondary-button", "View case"); button.type = "button";
-        button.addEventListener("click", () => openSession(card.invitation_id, false, true));
-        action.append(button);
-      } else action.textContent = "—";
-      row.append(candidate, attempt, automatic, final, action); table.append(row);
-    }
-    if (!cards.length && !cardsError) { const row = node("tr"); const cell = node("td", "table-empty", assessmentId ? "No candidates invited." : assessments?.length ? "Choose an exam." : "No exams yet."); cell.colSpan = 5; row.append(cell); table.append(row); }
+    if (!assessmentId) { resultController?.destroy(); resultController = null; resultOwner = null; el('review-results-table').replaceChildren(); el('results-count').textContent = '0 candidates'; return; }
+    if (resultOwner === assessmentId) { resultController.reload(); return; }
+    resultController?.destroy(); resultOwner = assessmentId; const owner = assessmentId;
+    resultController = AssessBridgeReporting.mount({ variant: 'reviewer', table: el('review-results-table'), host: el('results-report-controls'), pagerHost: el('results-report-pagination'), feedback, count: el('results-count'), assessment: owner,
+      base: `/api/employer/assessments/${owner}`, pdfBase: id => `/api/employer/assessments/${owner}/invitations/${id}/exports/audit.pdf`, onView: id => openSession(id, false, true) });
   }
   async function monitoringReport(url) {
     const result = await api(url); const events = [...result.events]; let after = result.next_after_id;
@@ -1097,5 +1075,6 @@ window.employerReview = (() => {
   window.setInterval(() => { if (!el("review-exams").hidden) renderExamList(); else if (!el("review-session").hidden) updateTimeUsed(); }, 30000);
   window.addEventListener("beforeunload", (event) => { if (dirty || findingDrafts.size || connectivityDrafts.size) { event.preventDefault(); event.returnValue = ""; } });
   if (["review", "results"].includes(location.hash.slice(1))) activate();
+  el('review-export').onclick = () => { if (report) AssessBridgeReporting.pdfButton({button: el('review-export'), url: base()+'/exports/audit.pdf', name: `assessment-${report.assessment_id}-session-${report.invitation_id}-audit.pdf`, scope: sessionMessages, target: el('review-session-message')}); };
   return { activate, pauseMedia, deactivate };
 })();

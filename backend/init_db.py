@@ -155,3 +155,9 @@ migrate_roster_removals()
 
 from migrate_casework import migrate as migrate_casework
 migrate_casework()
+
+from migrate_reporting import migrate as migrate_reporting
+migrate_reporting()
+
+from migrate_readiness import migrate as migrate_readiness
+migrate_readiness()

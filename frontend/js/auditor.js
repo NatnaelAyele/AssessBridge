@@ -10,6 +10,7 @@
   const states = { interrupted: "Interrupted", submitted: "Submitted", disqualified: "Disqualified", in_progress: "In progress", not_started: "Not started" };
   const findings = { supports_violation: "Supports a rule violation", dismissed: "Dismissed", inconclusive: "Inconclusive" };
   const flags = { identity_mismatch: "Possible identity mismatch", face_absent: "Face absent", face_unusable: "Face could not be checked", additional_person: "Additional person detected", mobile_phone: "Phone visible", book: "Book visible", tablet: "Tablet visible", calculator: "Calculator visible", head_turned: "Sustained head turn", head_down: "Downward head orientation", repeated_look_away: "Repeated head-orientation changes", speech: "Speech activity", repeated_speech: "Repeated speech activity", camera_obscured: "Camera image obscured", suspected_frozen_video: "Suspected frozen video", framing_changed: "Framing changed", audio_clipping: "Audio clipping", digital_audio_silence: "Digital audio silence", identity_reference_unavailable: "Identity reference unavailable", video_analysis_unavailable: "Video analysis unavailable", audio_analysis_unavailable: "Audio analysis unavailable", video_coverage_gap: "Video coverage gap", audio_coverage_gap: "Audio coverage gap" };
+  let resultController = null;
   let page = 1, exams = [], selectedExam = null, cards = [], selectedInvitation = null, data = null;
   let fullPlayer = null, evidencePlayer = null, examSerial = 0, candidateSerial = 0, caseSerial = 0, saving = false;
   let publication = null, publicationDraft = null, publishing = false;
@@ -73,7 +74,7 @@
   function auditStatus(audit) { if(audit.status==="needs_attention")return "Needs attention";return audit.status === "audited" ? "Audited" : audit.status === "changed" ? "Needs audit · Report updated" : audit.status === "not_ready" ? "No attempt" : "Needs audit"; }
   function pill(text, good = false, bad = false) { return node("span", `audit-status-pill${good ? " is-audited" : ""}${bad ? " is-error" : ""}`, text); }
   function pausePlayers() { fullPlayer?.pause(); evidencePlayer?.pause(); }
-  function clearPlayers() { for(const id of ['audit-case-notes','audit-case-history'])el(id)?._casework?.(); fullPlayer?.destroy(); evidencePlayer?.destroy(); fullPlayer = evidencePlayer = null; el("full-player-host").hidden = true; el("recording-toggle").textContent = "Open recording"; }
+  function clearPlayers() { resultController?.destroy(); resultController = null; el("auditor-reporting-details").open = false; for(const id of ['audit-case-notes','audit-case-history'])el(id)?._casework?.(); fullPlayer?.destroy(); evidencePlayer?.destroy(); fullPlayer = evidencePlayer = null; el("full-player-host").hidden = true; el("recording-toggle").textContent = "Open recording"; }
   function view(name) {
     for (const item of ["exam", "candidate", "case"]) el(`${item}-view`).hidden = item !== name;
     if (name !== 'case') caseFeedback.dispose();
@@ -452,6 +453,12 @@
     if (historyReportId) { const id = historyReportId; historyReportId = null; selectMainTab("publications",false); openPublishedResults(id); }
     else { view("candidate"); loadCandidates(); }
   });
+  el('auditor-reporting-details').addEventListener('toggle', () => {
+    if (!el('auditor-reporting-details').open || !selectedExam || resultController) return;
+    const id = selectedExam.id;
+    resultController = AssessBridgeReporting.mount({table:el('auditor-results-rows'),host:el('auditor-report-controls'),pagerHost:el('auditor-report-pagination'),feedback,assessment:id,base:`/api/auditor/assessments/${id}`,pdfBase: invitation => `/api/auditor/assessments/${id}/candidates/${invitation}/exports/audit.pdf`,onView: invitation => openCase(invitation)});
+  });
+  el('case-export').onclick = () => { if (data) AssessBridgeReporting.pdfButton({button:el('case-export'),url:base()+'/exports/audit.pdf',name:`assessment-${selectedExam.id}-session-${selectedInvitation}-audit.pdf`,scope:caseFeedback,target:el('case-message')}); };
   el("case-reload").addEventListener("click", () => { if (!saving) openCase(selectedInvitation, true); });
   el("recording-toggle").addEventListener("click", () => {
     if (!data) return;

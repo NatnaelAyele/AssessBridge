@@ -158,6 +158,7 @@ const examRecording = (() => {
         if (!pending.length) finalProgress('Confirming recording upload…');
         if (!pending.length) {
           try {
+            if(window.examReadiness && !await window.examReadiness.flush())throw new Error('Session events are still uploading. Reconnect and retry.');
             const result = await request("/api/candidate/exam/recording/finish", { method: "POST" });
             if (result.status === 'recording') throw new Error('Recording upload is still pending');
             await store().clear(); return { ...result, upload_complete: true };

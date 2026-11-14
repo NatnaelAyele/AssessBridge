@@ -8,10 +8,12 @@
     <link rel="stylesheet" href="css/employer.css?v=20261113-lifecycle" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/employer.js?v=20261113-roster-removal" defer></script>
-    <script src="js/connectivity-case.js?v=20261113-audit" defer></script>
+    <script src="js/connectivity-case.js?v=20261114-readiness" defer></script>
+    <link rel="stylesheet" href="/css/reporting.css?v=20261114-refined" />
+    <script src="/js/reporting.js?v=20261114-refined" defer></script>
     <script src="/js/casework.js?v=20261113" defer></script>
-    <script src="js/employer-review.js?v=20261113-casework" defer></script>
-    <link rel="stylesheet" href="css/employer-review.css?v=20261113-lifecycle" />
+    <script src="js/employer-review.js?v=20261114-reports-ui" defer></script>
+    <link rel="stylesheet" href="css/employer-review.css?v=20261114-readiness" />
     <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/personnel.css?v=20261113-roster-removal" />
     <link rel="stylesheet" href="/css/workspace-sidebar.css?v=20261113-blue" />
@@ -242,7 +244,7 @@
             <div id="review-session" hidden>
               <div class="review-session-head card">
                 <div><button id="review-back" class="text-button" type="button">Back to candidates</button><div class="review-session-identities"><div><span class="detail-field-label">Exam</span><strong id="review-assessment-title"></strong></div><div><span class="detail-field-label">Candidate</span><h2 id="review-candidate-name"></h2><p id="review-candidate-email"></p></div></div><div id="review-session-badges" class="review-badges"></div></div>
-                <button id="review-reload" class="secondary-button" type="button">Reload report</button>
+                <div class="reporting-head-actions"><button id="review-export" class="secondary-button" type="button">Export saved audit PDF</button><button id="review-reload" class="secondary-button" type="button">Reload report</button></div>
               </div>
               <div id="review-session-message" class="editor-feedback-host"></div>
               <div id="review-audit-concern"></div><div id="review-assessment-hold"></div><div id="review-publication-lock" class="editor-feedback-host"></div>
@@ -303,10 +305,10 @@
           </section>
           <section class="tab-panel" data-panel="results" aria-label="Results and reports" hidden>
             <div id="results-list">
-              <div class="card section-card results-card"><div class="section-card-head"><div><h2>Results</h2><span id="results-count" class="review-muted"></span></div><button id="results-refresh" class="secondary-button" type="button">Refresh</button></div>
-                <label class="results-exam-label">Exam<select id="results-assessment"><option value="">Loading assessments...</option></select></label>
+              <div class="card section-card results-card"><div class="section-card-head"><div><h2>Results &amp; reports</h2><span id="results-count" class="review-muted"></span></div><button id="results-refresh" class="secondary-button" type="button">Refresh</button></div>
+                <label class="results-exam-label">Assessment<select id="results-assessment"><option value="">Loading assessments...</option></select></label>
                 <div id="results-message" class="editor-feedback-host"></div>
-                <div class="table-wrap results-table-wrap"><table class="results-table"><thead><tr><th>Candidate</th><th>Exam status</th><th>MCQ score</th><th>Final result</th><th><span class="sr-only">Case report</span></th></tr></thead><tbody id="review-results-table"></tbody></table></div>
+                <div id="results-report-controls"></div><div class="table-wrap reporting-table-wrap"><table class="reporting-table"><thead><tr><th>Candidate</th><th>Exam progress</th><th>Automatic MCQ score</th><th>Written score</th><th>Total before review</th><th>Final reviewed score</th><th>Audit</th><th>Publication</th><th>Report</th></tr></thead><tbody id="review-results-table"></tbody></table></div><div id="results-report-pagination"></div>
               </div>
             </div>
             <div id="results-case-host" hidden></div>

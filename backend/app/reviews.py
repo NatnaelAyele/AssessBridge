@@ -222,12 +222,14 @@ def session_report(assessment_id, invitation_id, employer_id, source_ip=None, ac
         concern=public(outcome) if outcome and outcome["kind"]=="needs_attention" else None
         hold=latest_hold(cursor,assessment_id)
         publication_hold=public(hold) if hold and hold["kind"]=="held" else None
+        from .readiness import report as readiness_report
+        readiness = readiness_report(cursor, invitation_id)
         _audit(cursor, session["id"], actor_id or employer_id, "report", source_ip)
         connection.commit()
     system_locked = bool(session["disqualified_at"])
     ended = bool(ended_at(session))
     latest_json = _decision(latest)
-    return {"audit_concern":concern,"publication_hold":publication_hold,"assessment_id": assessment_id, "invitation_id": invitation_id, "session_id": session["id"],
+    return {"readiness":readiness,"audit_concern":concern,"publication_hold":publication_hold,"assessment_id": assessment_id, "invitation_id": invitation_id, "session_id": session["id"],
             "title": session["title"], "name": session["candidate_name"], "email": session["candidate_email"],
             "attempt_state": "disqualified" if system_locked else "interrupted" if session.get("interrupted_at") else "submitted" if ended else "in_progress",
             "interruption_reason": session.get("interruption_reason"), "connectivity_events": connectivity,

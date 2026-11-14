@@ -1,7 +1,7 @@
 """Append-only notes, auditor concerns, publication holds and session history."""
 import hashlib
 import json
-from datetime import timedelta
+from datetime import datetime,timedelta
 from typing import Literal
 from uuid import UUID
 from fastapi import HTTPException
@@ -129,6 +129,10 @@ def history(assessment,invitation,user,category='all',order='desc',page=1):
   for r in c.fetchall():add('consent:'+str(r['id']),r['accepted_at'],'identity','Monitoring notice accepted',r['policy_version'],'Candidate')
   c.execute('SELECT * FROM assessment_identity_attempts WHERE invitation_id=%s ORDER BY id',(invitation,))
   for r in c.fetchall():add('identity:'+str(r['id']),r['checked_at'],'identity','Identity check '+r['status'],(r['failure_reason'] or '').replace('_',' ').capitalize(), 'System')
+  from .readiness import report as readiness_report
+  readiness=readiness_report(c,invitation)
+  for r in readiness['checks']:add('readiness:'+str(r['id']),datetime.fromisoformat(r['created_at'].removesuffix('Z')),'assessment','Readiness confirmed' if r['passed'] else 'Readiness check recorded','Acknowledgements complete' if all(r['acknowledgements'].values()) else 'Acknowledgements incomplete','Candidate')
+  for r in readiness['events']:add('environment:'+str(r['id']),datetime.fromisoformat(r['received_at'].removesuffix('Z')),'assessment',r['label'],'Source: Browser page. Reported time: '+r['client_occurred_at'],'Candidate')
   add('start',s['started_at'],'assessment','Assessment started',who='Candidate')
   for field,title in [('submitted_at','Assessment submitted'),('disqualified_at','Attempt disqualified'),('interrupted_at','Attempt interrupted')]:add(field,s.get(field),'assessment',title,s.get('submission_reason') or s.get('interruption_reason') or s.get('disqualification_reason') or '')
   c.execute('SELECT * FROM assessment_connectivity_events WHERE session_id=%s',(s['id'],))

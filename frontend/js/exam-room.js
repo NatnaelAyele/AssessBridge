@@ -63,6 +63,8 @@ function syncMediaState() {
   setDeviceStatus("camera", connected(camera) ? "Connected" : "Not connected", connected(camera) ? "ready" : "error");
   setDeviceStatus("microphone", connected(microphone) ? "Connected" : "Not connected", connected(microphone) ? "ready" : "error");
   byId("continue-devices").disabled = !mediaReady();
+  window.examReadiness?.track("camera", connected(camera));
+  window.examReadiness?.track("microphone", connected(microphone));
   if (!mediaReady()) window.assessbridgeRecording?.markInterrupted?.();
   if (!byId("exam-panel").hidden) window.examFlow.deviceStatusChanged();
   if (!mediaReady() && (!byId("instructions-panel").hidden || !byId("identity-panel").hidden)) {
