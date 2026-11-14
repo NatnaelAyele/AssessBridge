@@ -1,6 +1,8 @@
 """Company membership and administrative account lifecycle."""
 import hashlib
 import secrets
+from datetime import datetime,timedelta,timezone
+from .config import SECURITY_AUDIT_RETENTION_DAYS
 from email.message import EmailMessage
 from urllib.parse import urljoin
 from fastapi import HTTPException
@@ -62,7 +64,7 @@ def mail(email,token,kind,company):
     except Exception as exc: raise HTTPException(503,'Could not send the email. Try again.') from exc
 
 def event(cur,company,actor,kind,target=None,invitation=None):
-    cur.execute('INSERT INTO company_account_events(company_id,actor_user_id,event_type,target_user_id,invitation_id) VALUES(%s,%s,%s,%s,%s)',(company,actor,kind,target,invitation))
+    cur.execute('INSERT INTO company_account_events(company_id,actor_user_id,event_type,target_user_id,invitation_id,expires_at) VALUES(%s,%s,%s,%s,%s,%s)',(company,actor,kind,target,invitation,datetime.now(timezone.utc).replace(tzinfo=None)+timedelta(days=SECURITY_AUDIT_RETENTION_DAYS) if SECURITY_AUDIT_RETENTION_DAYS else None))
 
 def membership(user_id):
     with database() as db:
@@ -73,13 +75,14 @@ def membership(user_id):
     return row
 
 def authorize_resource(user_id,assessment=None,publication=None):
+    from .retention import live_sql
     member=membership(user_id)
     with database() as db:
         c=db.cursor()
         if assessment is not None:
-            c.execute('SELECT id FROM assessments WHERE id=%s AND company_id=%s',(assessment,member['company_id']))
+            c.execute('SELECT a.id FROM assessments a WHERE a.id=%s AND a.company_id=%s AND '+live_sql(),(assessment,member['company_id']))
         elif publication is not None:
-            c.execute('SELECT p.id FROM assessment_result_publications p JOIN assessments a ON a.id=p.assessment_id WHERE p.id=%s AND a.company_id=%s',(publication,member['company_id']))
+            c.execute('SELECT p.id FROM assessment_result_publications p JOIN assessments a ON a.id=p.assessment_id WHERE p.id=%s AND a.company_id=%s AND '+live_sql(),(publication,member['company_id']))
         else:return member
         if not c.fetchone():raise HTTPException(404,'Not found')
     return member

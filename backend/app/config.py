@@ -38,3 +38,12 @@ RECORDING_KEY = os.getenv("RECORDING_KEY", "").strip()
 RECORDING_RETENTION_DAYS = int(os.getenv("RECORDING_RETENTION_DAYS", "30"))
 if not 1 <= RECORDING_RETENTION_DAYS <= 3650:
     raise RuntimeError("RECORDING_RETENTION_DAYS must be between 1 and 3650")
+
+IDENTITY_RETENTION_DAYS = int(os.getenv("IDENTITY_RETENTION_DAYS", "30"))
+if not 1 <= IDENTITY_RETENTION_DAYS <= 3650:
+    raise RuntimeError("IDENTITY_RETENTION_DAYS must be between 1 and 3650")
+
+_security_audit_days = os.getenv("SECURITY_AUDIT_RETENTION_DAYS", "").strip()
+SECURITY_AUDIT_RETENTION_DAYS = int(_security_audit_days) if _security_audit_days else None
+if SECURITY_AUDIT_RETENTION_DAYS is not None and not 1 <= SECURITY_AUDIT_RETENTION_DAYS <= 3650:
+    raise RuntimeError("SECURITY_AUDIT_RETENTION_DAYS must be blank or between 1 and 3650")

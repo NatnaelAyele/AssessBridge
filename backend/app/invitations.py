@@ -152,6 +152,8 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
         where.append("a.starts_at <= UTC_TIMESTAMP() AND a.ends_at > UTC_TIMESTAMP()")
     elif status == "closed":
         where.append("a.ends_at <= UTC_TIMESTAMP()")
+    from .retention import live_sql
+    where.append(live_sql())
     having = []
     for field, minimum, maximum in (("sent_count", candidates_min, candidates_max),
                                     ("question_count", questions_min, questions_max)):
@@ -353,6 +355,8 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                 )
                 assessment_id = cursor.lastrowid
                 cursor.execute("UPDATE assessments SET company_id=(SELECT company_id FROM users WHERE id=%s) WHERE id=%s", (employer_id,assessment_id))
+                from .retention import snapshot
+                snapshot(cursor,assessment_id,new=True)
                 for candidate in payload.candidates:
                     cursor.execute(
                         "SELECT id FROM users WHERE email = %s AND role = 'candidate' AND is_active = TRUE",

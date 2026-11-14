@@ -1,13 +1,14 @@
 (() => {
  const el=id=>document.getElementById(id), manager=AssessBridgeFeedback.create({notificationHost:'#notifications'}), scope=manager.scope('company');
+ window.assessbridgeCompanyFeedback=manager;
  const roles={company_admin:'Company administrator',employer_personnel:'Employer personnel',auditor:'Auditor'};
  async function api(path,body){let response;try{response=await fetch(path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:body===undefined?undefined:JSON.stringify(body)})}catch{throw Error('Could not reach AssessBridge. Try again.')}
  const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(response.status>=500?'Could not complete the request. Try again.':typeof data.detail==='string'?data.detail:'Check the information and try again.');return data;}
  function error(e){scope.show({id:'error',target:'#message',text:e.message,tone:'error'});}
  function success(text,persistent=false){scope.clear('error');if(persistent)scope.show({id:'outcome',target:'#message',text,tone:'success'});else scope.notify({id:'saved',text});}
- function bind(id,action){const form=el(id);if(!form)return;form.noValidate=true;form.addEventListener('submit',async e=>{e.preventDefault();if(form.dataset.busy)return;scope.clear('error');let first;
- for(const input of form.querySelectorAll('input,select')){scope.clear('field-'+input.name);let text='';if(!input.validity.valid)text=input.type==='email'?'Enter a valid email address.':input.type==='password'?'Use a password of at least 12 characters.':'Complete this field.';if(input.name==='confirmation'&&input.value!==form.elements.password.value)text='Passwords do not match.';if(input.type==='password'&&new TextEncoder().encode(input.value).length>72)text='Use a password of at most 72 bytes.';if(text){scope.fieldError({id:'field-'+input.name,input,text});first ||= input;}}
- if(first){first.focus();return;}form.dataset.busy='1';const button=form.querySelector('button'),label=button.textContent;button.disabled=true;button.textContent='Please wait...';try{await action(Object.fromEntries(new FormData(form)),form)}catch(e){error(e)}finally{delete form.dataset.busy;button.disabled=false;button.textContent=label;}});}
+ function bind(id,action){const form=el(id);if(!form)return;form.noValidate=true;form.addEventListener('submit',async e=>{e.preventDefault();if(form.dataset.busy)return;scope.clear('error');if(id==='details')scope.clear('details-error');let first;
+ for(const input of form.querySelectorAll('input,select')){scope.clear('field-'+input.name);let text='';if(!input.validity.valid)text=input.type==='email'?'Enter a valid email address.':input.type==='password'?'Use a password of at least 12 characters.':'Complete this field.';if(id==='details'&&input.name==='name'&&!input.value.trim())text='Enter the company name.';if(input.name==='confirmation'&&input.value!==form.elements.password.value)text='Passwords do not match.';if(input.type==='password'&&new TextEncoder().encode(input.value).length>72)text='Use a password of at most 72 bytes.';if(text){scope.fieldError({id:'field-'+input.name,input,text});first ||= input;}}
+ if(first){first.focus();return;}form.dataset.busy='1';const button=form.querySelector('button'),label=button.textContent;button.disabled=true;button.textContent='Please wait...';try{await action(Object.fromEntries(new FormData(form)),form)}catch(e){if(id==='details')scope.show({id:'details-error',target:'#company-details-feedback',text:e.message,tone:'error'});else error(e)}finally{delete form.dataset.busy;button.disabled=false;button.textContent=label;}});}
  function confirm(title,text,callback){scope.confirm({id:'confirm',title,text,confirmLabel:'Confirm',onConfirm:callback,errorMessage:e=>e.message});}
  if(document.body.dataset.page==='access'){
   const descriptions={'Register your company':['COMPANY REGISTRATION','Set up your company and its first administrator.'],'Reset staff password':['ACCOUNT RECOVERY','Enter your work email to receive a password reset link.'],'Choose a new password':['ACCOUNT RECOVERY','Choose a new password for your staff account.'],'Verify your company':['EMAIL VERIFICATION','Activate your company account to continue.'],'Join your company':['STAFF INVITATION','Create your password to join the company below.']};
@@ -25,7 +26,8 @@
  }
  function button(text,action){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=action;return b;}
  function row(host,values){const tr=document.createElement('tr');for(const [index,value] of values.entries()){const td=document.createElement('td');td.dataset.label=['Name','Email','Role','Status'][index];if(['Active','Inactive','Pending','Accepted','Revoked','Expired'].includes(value)){const badge=document.createElement('span');badge.className='status-pill';badge.dataset.status=value;badge.textContent=value;td.append(badge);}else td.textContent=value??'Not provided';tr.append(td)}host.append(tr);const td=document.createElement('td');td.dataset.label='Actions';tr.append(td);return td;}
- let serial=0;
+ let serial=0,companyName='Company administration';
+ function updatePageHeading(){const settings=!document.querySelector('[data-pane="settings"]').hidden;el('title').textContent=settings?'Company settings':companyName;document.querySelector('.page-heading .eyebrow').textContent=settings?companyName:'YOUR COMPANY';document.querySelector('.stats-row').hidden=settings;el('refresh').hidden=settings;}
  function filterStaff(){
   const search=el('staff-search').value.trim().toLowerCase(),role=el('staff-role').value;
   let visible=0;
@@ -36,8 +38,9 @@
  for(const button of document.querySelectorAll('[data-view]'))button.addEventListener('click',()=>{
   for(const item of document.querySelectorAll('[data-view]')){const selected=item===button;item.classList.toggle('is-active',selected);if(selected)item.setAttribute('aria-current','page');else item.removeAttribute('aria-current');}
   for(const pane of document.querySelectorAll('[data-pane]'))pane.hidden=pane.dataset.pane!==button.dataset.view;
+  updatePageHeading();
  });
- async function load(){const request=++serial;try{const data=await api('/api/company/staff');if(request!==serial)return;scope.clear('error');el('title').textContent=data.company.name;if(document.activeElement!==el('details').elements.name)el('details').elements.name.value=data.company.name;el('staff').replaceChildren();el('invitations').replaceChildren();
+ async function load(){const request=++serial;try{const data=await api('/api/company/staff');if(request!==serial)return;scope.clear('error');companyName=data.company.name;updatePageHeading();if(document.activeElement!==el('details').elements.name)el('details').elements.name.value=data.company.name;el('staff').replaceChildren();el('invitations').replaceChildren();
  el('active-count').textContent=data.users.filter(u=>u.is_active).length;
  const pending=data.invitations.filter(i=>!i.accepted_at&&!i.revoked_at&&!i.expired).length;
  el('pending-count').textContent=pending;el('pending-nav').textContent=pending;

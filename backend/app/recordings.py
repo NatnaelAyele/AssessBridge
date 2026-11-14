@@ -5,6 +5,8 @@ import hashlib
 import os
 import re
 import secrets
+import time
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -14,6 +16,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from .config import RECORDING_KEY, RECORDING_RETENTION_DAYS, RECORDINGS_DIR
+from .retention import for_invitation
 from .db import database
 
 
@@ -236,7 +239,7 @@ def finish_recording(invitation_id: int, candidate_id: int) -> dict:
             cursor.execute(
                 """UPDATE assessment_recordings SET status = %s, finalized_at = %s, expires_at = %s
                    WHERE id = %s""",
-                (status, now, ended + timedelta(days=RECORDING_RETENTION_DAYS), recording["recording_id"]),
+                (status, now, ended + timedelta(days=for_invitation(cursor,invitation_id)['monitoring_days']), recording["recording_id"]),
             )
             connection.commit()
             cursor.close()
@@ -260,7 +263,7 @@ def recording_exit_state(invitation_id: int, candidate_id: int) -> dict:
             if now < ended + timedelta(seconds=FINAL_UPLOAD_SECONDS):
                 raise HTTPException(409, "Recording upload is still pending. Keep SEB open.")
             cursor.execute("UPDATE assessment_recording_parts SET status='incomplete',finalized_at=%s WHERE recording_id=%s AND status='recording'", (now, row['recording_id']))
-            cursor.execute("UPDATE assessment_recordings SET status='incomplete',finalized_at=%s,expires_at=%s WHERE id=%s", (now, ended+timedelta(days=RECORDING_RETENTION_DAYS), row['recording_id']))
+            cursor.execute("UPDATE assessment_recordings SET status='incomplete',finalized_at=%s,expires_at=%s WHERE id=%s", (now, ended+timedelta(days=for_invitation(cursor,invitation_id)['monitoring_days']), row['recording_id']))
             status = 'incomplete'
         connection.commit()
         return {'ready': True, 'recording_status': status, 'exit_url': '/seb/exit'}
@@ -299,6 +302,8 @@ def finalize_stale_recordings() -> None:
         cursor.execute(
             """UPDATE assessment_recordings r
                JOIN assessment_exam_sessions s ON s.id = r.session_id
+               JOIN assessment_invitations i ON i.id=s.invitation_id
+               LEFT JOIN assessment_retention_policies rp ON rp.assessment_id=i.assessment_id
                LEFT JOIN (
                    SELECT recording_id, COUNT(*) AS part_count,
                           SUM(status <> 'complete') AS incomplete_count
@@ -307,7 +312,7 @@ def finalize_stale_recordings() -> None:
                SET r.status = CASE WHEN p.part_count > 0 AND p.incomplete_count = 0
                                    THEN 'complete' ELSE 'incomplete' END,
                    r.finalized_at = %s,
-                   r.expires_at = DATE_ADD(COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at), INTERVAL %s DAY)
+                   r.expires_at = DATE_ADD(COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at), INTERVAL COALESCE(rp.monitoring_days,%s) DAY)
                WHERE r.status = 'recording' AND COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at) < %s""",
             (now, RECORDING_RETENTION_DAYS, now - timedelta(seconds=FINAL_UPLOAD_SECONDS)),
         )
@@ -315,32 +320,52 @@ def finalize_stale_recordings() -> None:
         cursor.close()
 
 
+def _unlink_expired(path):
+    for attempt in range(6):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError as error:
+            if getattr(error,'winerror',None) not in (32,33) or attempt==5:raise
+            time.sleep(.05)
+
+
+def delete_storage(token):
+    if not re.fullmatch(r"[0-9a-f]{32}", token):
+        raise RuntimeError("Invalid recording storage token")
+    root=RECORDINGS_DIR.resolve()
+    directory=(root/token).resolve()
+    if directory.parent!=root:
+        raise RuntimeError("Recording storage path escaped its directory")
+    if directory.is_dir():
+        for part in directory.iterdir():
+            if part.resolve().parent!=directory or part.is_symlink():raise RuntimeError("Unsafe recording part path")
+            if part.is_dir():
+                for chunk in part.iterdir():
+                    if chunk.resolve().parent!=part.resolve() or chunk.is_symlink():raise RuntimeError("Unsafe recording chunk path")
+                    if chunk.is_file():_unlink_expired(chunk)
+                part.rmdir()
+            elif part.is_file():_unlink_expired(part)
+        directory.rmdir()
+
+
 def purge_expired_recordings() -> int:
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT id, storage_token FROM assessment_recordings WHERE expires_at <= %s AND status <> 'deleted'", (utc_now(),))
+        cursor.execute("SELECT id, storage_token FROM assessment_recordings WHERE expires_at <= %s AND status <> 'deleted' FOR UPDATE", (utc_now(),))
         expired = cursor.fetchall()
         count = 0
         for item in expired:
-            token = item["storage_token"]
-            if not re.fullmatch(r"[0-9a-f]{32}", token):
-                raise RuntimeError("Invalid recording storage token")
-            directory = (RECORDINGS_DIR / token).resolve()
-            if directory.parent != RECORDINGS_DIR:
-                raise RuntimeError("Recording storage path escaped its directory")
-            if directory.is_dir():
-                for part in directory.iterdir():
-                    if part.is_dir():
-                        for chunk in part.iterdir():
-                            if chunk.is_file():
-                                chunk.unlink()
-                        part.rmdir()
-                directory.rmdir()
-            cursor.execute("DELETE c FROM assessment_recording_chunks c JOIN assessment_recording_parts p ON p.id = c.part_id WHERE p.recording_id = %s", (item["id"],))
-            cursor.execute("DELETE FROM assessment_recording_parts WHERE recording_id = %s", (item["id"],))
-            cursor.execute("UPDATE assessment_recordings SET status = 'deleted' WHERE id = %s", (item["id"],))
-            connection.commit()
-            count += 1
+            try:
+                delete_storage(item["storage_token"])
+                cursor.execute("DELETE c FROM assessment_recording_chunks c JOIN assessment_recording_parts p ON p.id = c.part_id WHERE p.recording_id = %s", (item["id"],))
+                cursor.execute("DELETE FROM assessment_recording_parts WHERE recording_id = %s", (item["id"],))
+                cursor.execute("UPDATE assessment_recordings SET status = 'deleted' WHERE id = %s", (item["id"],))
+                connection.commit()
+                count += 1
+            except (OSError,RuntimeError):
+                connection.rollback()
+                logging.getLogger(__name__).exception('Recording retention cleanup failed for recording %s',item['id'])
         cursor.close()
         return count
 

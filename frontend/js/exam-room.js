@@ -245,6 +245,12 @@ roomScriptsReady.then(() => roomRequest("/api/candidate/exam-room"))
   .then(async (exam) => {
     byId("exam-title").textContent = exam.title;
     window.assessbridgeIdentity.configure(exam.identity_policy);
+    if(exam.retention){
+      byId('exam-retention-notice').hidden=false;
+      for(const [key,name,anchor]of [['identity_days','identity','after capture'],['monitoring_days','monitoring','after the attempt ends'],['review_days','review','after the assessment closes'],['audit_days','audit','after the assessment closes']]){
+        const days=exam.retention[key];byId('notice-'+name+'-retention').textContent=days===null?'No automatic expiry':`${days} ${days===1?'day':'days'} ${anchor}`;
+      }
+    }
     if (!exam.consented) {
       showPanel("consent-panel");
       return;

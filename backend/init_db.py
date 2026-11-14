@@ -161,3 +161,6 @@ migrate_reporting()
 
 from migrate_readiness import migrate as migrate_readiness
 migrate_readiness()
+
+from migrate_retention import migrate as migrate_retention
+migrate_retention()
