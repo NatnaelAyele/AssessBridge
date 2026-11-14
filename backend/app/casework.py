@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from pydantic import BaseModel,ConfigDict,Field,field_validator
 from .db import database
+from .audit_times import utc
 from .reviews import _load,_advance,_version,_audit,iso,now,unpack
 from .companies import membership,authorize_resource
 
@@ -168,5 +169,5 @@ def history(assessment,invitation,user,category='all',order='desc',page=1):
   for r in c.fetchall():add('publication:'+str(r['id']),r['created_at'],'audit','Results published',r['remark'],r['publisher_username'])
   _audit(c,s['id'],user,'session_history',None);db.commit()
  filtered=[r for r in items if category=='all' or r['category']==category]
- filtered.sort(key=lambda r:(r['at'],r['id']),reverse=order=='desc')
+ filtered.sort(key=lambda r:(utc(r['at']),r['id']),reverse=order=='desc')
  return {'items':filtered[(page-1)*30:page*30],'total':len(filtered),'page':page,'page_size':30}

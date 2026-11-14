@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .db import database
+from .audit_times import iso
 from .connectivity import evidence_pending, ended_at
 from .exam_sessions import finalize_if_expired
 from .identity import _identity_key
@@ -20,10 +21,6 @@ from .connectivity_review import load_incidents
 
 def now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def iso(value):
-    return value.isoformat() + "Z" if value else None
 
 
 def unpack(value):
