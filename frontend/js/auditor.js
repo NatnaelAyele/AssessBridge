@@ -340,11 +340,13 @@
   }
   function renderIdentity() {
     const id = data.identity;
-    facts(el("identity-facts"), [["Identity check", id?.status === "passed" ? "Passed" : id?.status === "failed" ? "Failed" : "Not checked"], ["Face similarity score", pct(id?.face_similarity)], ["Name match score", pct(id?.name_similarity)]]);
+    facts(el("identity-facts"), id?.verification_method === 'esignet_demo'
+      ? [['Identity check', 'Demo identity authenticated'], ['Session photo', id.selfie_available || data.review.reference_available ? 'Available' : 'Unavailable']]
+      : [["Identity check", id?.status === "passed" ? "Passed" : id?.status === "failed" ? "Failed" : "Not checked"], ["Face similarity score", pct(id?.face_similarity)], ["Name match score", pct(id?.name_similarity)]]);
     el("identity-images").hidden = true; el("identity-images").replaceChildren(); el("identity-toggle").textContent = "Open verification images";
     el("identity-toggle").hidden = !id?.card_available && !id?.selfie_available && !data.review.reference_available;
     const missing = !id?.card_available && !id?.selfie_available && !data.review.reference_available
-      ? "Verification images unavailable or expired." : !id?.card_available ? "ID card image unavailable or expired." : !id?.selfie_available && !data.review.reference_available ? "Reference photo unavailable or expired." : "";
+      ? "Verification images unavailable or expired." : !id?.card_available && id?.verification_method !== 'esignet_demo' ? "ID card image unavailable or expired." : !id?.selfie_available && !data.review.reference_available ? "Reference photo unavailable or expired." : "";
     let status = el("identity-image-status");
     if (!status) { status = node("div", "editor-feedback-host"); status.id = "identity-image-status"; el("identity-facts").after(status); }
     notice(caseFeedback, 'identity-image-status', missing, 'warning');
@@ -472,7 +474,8 @@
     if (!host.hidden) { host.hidden = true; host.replaceChildren(); el("identity-toggle").textContent = "Open verification images"; return; }
     const identity = data.identity;
     for (const [kind, label, available] of [["card", "ID card", identity?.card_available], ["selfie", "Verified reference photo", identity?.selfie_available || data.review.reference_available]]) {
-      const figure = node("figure"); figure.append(node("figcaption", "", label));
+      if (kind === 'card' && identity?.verification_method === 'esignet_demo') continue;
+      const figure = node("figure"); figure.append(node("figcaption", "", identity?.verification_method === 'esignet_demo' ? 'Session photo (demo)' : label));
       const imageError = () => { if (scope.active && figure.isConnected) scope.show({ id: `image-${kind}`, target: figure, tone: 'error', text: 'Image unavailable or expired. Close the images and open them again.' }); };
       host.append(figure);
       if (available) { const image = node("img"); image.alt = label; image.src = `${base()}/identity/${kind}`; image.addEventListener("error", () => { image.remove(); imageError(); }); figure.prepend(image); }

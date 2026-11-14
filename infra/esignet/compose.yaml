@@ -1,0 +1,107 @@
+name: assessbridge-identity-demo
+services:
+  database:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run backend/setup_esignet.py first}
+    volumes:
+      - identity_database:/var/lib/postgresql/data
+      - ../../var/esignet/init.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  mock-identity-system:
+    image: mosipid/mock-identity-system:0.14.0
+    user: root
+    entrypoint: [java, '-Dspring.profiles.active=default,local', -jar, mock-identity-system.jar]
+    environment:
+      container_user: mosip
+      active_profile_env: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://database:5432/mosip_mockidentitysystem?currentSchema=mockidentitysystem
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      MOSIP_ESIGNET_HOST: esignet:8080
+      MOSIP_MOCKIDENTITYSYSTEM_ESIGNET_ISSUER_ID: ${ESIGNET_ISSUER}
+      MOSIP_KERNEL_KEYMANAGER_HSM_CONFIG_PATH: /data/mock-local.p12
+      MOSIP_KERNEL_KEYMANAGER_HSM_KEYSTORE_PASS: ${KEYSTORE_PASSWORD}
+    volumes:
+      - mock_identity_keys:/data
+    depends_on:
+      database:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, --spider, 'http://localhost:8082/v1/mock-identity-system/keys.json']
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 20s
+    restart: unless-stopped
+  esignet:
+    image: mosipid/esignet:2.0.0
+    user: root
+    environment:
+      container_user: mosip
+      PORT: 8080
+      DATABASE_HOST: database
+      DATABASE_PORT: 5432
+      DATABASE_NAME: mosip_esignet
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      KEYMANAGER_KEYSTORE_TYPE: PKCS12
+      KEYMANAGER_DB_SCHEMA: esignet
+      KEYMANAGER_PKCS12_FILE_PATH: /data/keystore.p12
+      KEYMANAGER_PKCS12_PASSWORD: ${KEYSTORE_PASSWORD}
+      KEYMANAGER_PKCS12_ALLOW_INSECURE_SOFTWARE_KEYSTORE: 'true'
+      MOSIP_ESIGNET_CACHE_TYPE: inmemory
+      MOSIP_ESIGNET_HOST: ${ESIGNET_ISSUER}
+      MOSIP_ESIGNET_BASE_URL: ${ESIGNET_ISSUER}
+      MOSIP_ESIGNET_OIDC_UI_HOSTNAME: ${UI_HOST}
+      MOSIP_ESIGNET_OIDC_UI_PORT: ${UI_PORT}
+      MOSIP_ESIGNET_OIDC_UI_SCHEME: ${UI_SCHEME}
+      MOSIP_ESIGNET_CAPTCHA_SITE_PROVIDER: hcaptcha
+      MOSIP_ESIGNET_CAPTCHA_SITE_KEY: 10000000-ffff-ffff-ffff-000000000001
+      MOSIP_ESIGNET_AUTHN_PROVIDER: mock
+      MOSIP_ESIGNET_MOCK_DOMAIN_URL: http://mock-identity-system:8082
+    volumes:
+      - identity_keys:/data
+      - ../../var/esignet/flow.yaml:/home/mosip/data/flows/flow-esignet.yaml:ro
+    depends_on:
+      database:
+        condition: service_healthy
+      mock-identity-system:
+        condition: service_healthy
+      key-permissions:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  key-permissions:
+    image: mosipid/esignet:2.0.0
+    user: root
+    entrypoint: [/bin/sh, -c]
+    command: ['chown mosip:mosip /data']
+    volumes:
+      - identity_keys:/data
+  esignet-ui:
+    image: mosipid/oidc-ui:2.0.0
+    user: root
+    entrypoint: [/bin/sh, /opt/assessbridge/start-ui.sh]
+    ports:
+      - '127.0.0.1:${ESIGNET_BIND_PORT:-3000}:3000'
+    environment:
+      container_user: mosip
+      DEFAULT_LANG: en
+      DEFAULT_WELLKNOWN: '%5B%7B%22name%22%3A%22OpenID%20Configuration%22%2C%22value%22%3A%22%2F.well-known%2Fopenid-configuration%22%7D%5D'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./start-ui.sh:/opt/assessbridge/start-ui.sh:ro
+      - ./demo-login.js:/usr/share/nginx/html/assessbridge-demo.js:ro
+    depends_on:
+      - esignet
+    restart: unless-stopped
+volumes:
+  identity_database:
+  identity_keys:
+  mock_identity_keys:

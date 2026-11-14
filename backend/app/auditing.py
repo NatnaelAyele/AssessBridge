@@ -169,7 +169,7 @@ def case_report(assessment_id, invitation_id, auditor_id, source_ip):
         media = {"status": "unavailable", "parts": []}
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("""SELECT status,name_similarity,face_similarity,
+        cursor.execute("""SELECT status,name_similarity,face_similarity,verification_method,
                           (card_ciphertext IS NOT NULL AND evidence_expires_at>UTC_TIMESTAMP()) AS card_available,
                           (selfie_ciphertext IS NOT NULL AND evidence_expires_at>UTC_TIMESTAMP()) AS selfie_available
                           FROM assessment_identity_checks WHERE invitation_id=%s""", (invitation_id,))

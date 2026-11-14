@@ -199,7 +199,7 @@ def session_report(assessment_id, invitation_id, employer_id, source_ip=None, ac
                              "event_snapshot": unpack(row["event_snapshot_json"]),
                              "reviewer": row["reviewer_username"], "reviewer_id": row["reviewer_user_id"],
                              "created_at": iso(row["created_at"])})
-        cursor.execute("SELECT status,stage,failure_reason,checked_at,attempts FROM assessment_identity_checks WHERE invitation_id=%s", (invitation_id,))
+        cursor.execute("SELECT status,stage,failure_reason,checked_at,attempts,verification_method FROM assessment_identity_checks WHERE invitation_id=%s", (invitation_id,))
         identity = cursor.fetchone()
         if identity:
             identity["checked_at"] = iso(identity["checked_at"])

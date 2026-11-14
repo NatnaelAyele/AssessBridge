@@ -106,6 +106,11 @@ class SendInvitationsRequest(BaseModel):
     @field_validator("identity_policy")
     @classmethod
     def valid_identity_documents(cls, value: str) -> str:
+        from . import esignet
+        if value == esignet.POLICY:
+            if not esignet.enabled():
+                raise ValueError('Demo identity authentication is disabled')
+            return value
         if value not in {"Fayda ID", "Other ID cards"}:
             raise ValueError("Choose Fayda ID card or Other ID cards")
         return value
@@ -371,6 +376,7 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                                 f"{SEB_BASE_URL}/exam-entry?exam={exam_username}",
                                 config_password_for(exam_username),
                                 quit_password_for(exam_username),
+                                payload.identity_policy,
                             )
                         else:
                             seb_key, seb_file = None, None

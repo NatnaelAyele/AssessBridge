@@ -2,7 +2,27 @@ let capturedCard = null;
 let capturedSelfie = null;
 let captureInProgress = false;
 let identityCheckInProgress = false;
+let demoIdentity = false;
+let demoAuthenticated = false;
+function captureReady() { return !!capturedSelfie && (demoIdentity ? demoAuthenticated : !!capturedCard && !window.assessbridgeCardCrop.isOpen()); }
 function configureIdentity(policy) {
+  demoIdentity = policy === 'Fayda demo (eSignet)';
+  byId('demo-authentication').hidden = !demoIdentity;
+  byId('verify-identity').textContent = demoIdentity ? 'Save session photo' : 'Check identity';
+  byId('identity-card-capture').hidden = demoIdentity;
+  byId('identity-selfie-label').textContent = demoIdentity ? 'Session photo' : '2. Your face';
+  byId('identity-method-note').textContent = demoIdentity
+    ? 'Demo authentication does not verify a real Fayda identity. Your camera photo is used for session monitoring.'
+    : "This compares the printed name and portrait with your invitation and camera image. It does not check the card against the issuer's records.";
+  if (demoIdentity) {
+    byId('consent-identity-description').innerHTML = 'Before the exam, you will authenticate a fictional test identity and capture a camera photo for session monitoring. No card or portrait comparison is performed in this demo mode.<span id="consent-id-type" hidden></span>';
+    byId('identity-title').textContent = demoAuthenticated ? 'Capture your session photo' : 'Authenticate your test identity';
+    byId('identity-instructions').textContent = demoAuthenticated ? 'Look at the camera, capture your face, then save the session photo.' : 'Authenticate the test identity named in your invitation. Then capture a clear photo of your face for this session.';
+    byId('authenticate-demo').hidden = demoAuthenticated;
+    byId('capture-selfie').disabled = !demoAuthenticated;
+    return;
+  }
+  if (byId('consent-id-type').hidden) byId('consent-identity-description').innerHTML = 'Before the exam, we will capture your <span id="consent-id-type">ID card</span> and a camera image to compare the card name and portrait with your invitation and face.';
   const other = policy === "Other ID cards";
   const label = other ? "photo ID card" : "Fayda ID card";
   byId("consent-id-type").textContent = label;
@@ -15,7 +35,7 @@ function configureIdentity(policy) {
 function showIdentityResult(result) {
   byId("identity-assessment").textContent = result.assessment_title ? `Assessment: ${result.assessment_title}` : "";
   // Failure guidance is shown once beside the capture controls.
-  candidateFeedback.show('identity-check-result', result.status === 'passed' ? 'Identity check passed.' : '', 'success');
+  candidateFeedback.show('identity-check-result', result.status === 'passed' ? (demoIdentity ? 'Demo identity authenticated.' : 'Identity check passed.') : '', 'success');
 
 }
 
@@ -106,12 +126,12 @@ async function identityCapture(kind) {
       window.assessbridgeCardCrop.setSource(best);
     }
     else capturedSelfie = best.split(",")[1];
-    byId("verify-identity").disabled = !capturedCard || !capturedSelfie || window.assessbridgeCardCrop.isOpen();
+    byId("verify-identity").disabled = !captureReady();
     identityMessage("");
   } finally {
     button.textContent = previousLabel;
     for (const buttonKind of ["card", "selfie"]) byId(`capture-${buttonKind}`).disabled = false;
-    byId("verify-identity").disabled = !capturedCard || !capturedSelfie || window.assessbridgeCardCrop.isOpen();
+    byId("verify-identity").disabled = !captureReady();
     captureInProgress = false;
   }
 }
@@ -129,10 +149,17 @@ async function prepareIdentity() {
   const response = await roomRequest("/api/candidate/identity");
   const state = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(candidateFeedback.serverError(response, state, "Could not check your identity status. Try again."));
+  demoAuthenticated = state.identity_policy === 'Fayda demo (eSignet)' && !!state.demo?.authenticated;
   configureIdentity(state.identity_policy);
+  if (demoIdentity) {
+    byId('demo-authentication-state').textContent = demoAuthenticated ? `Authenticated test identity: ${state.demo.name}` : 'Use the test identity named in your invitation.';
+    byId('authenticate-demo').textContent = 'Authenticate test identity';
+    byId('capture-selfie').disabled = !demoAuthenticated;
+  }
   if (state.status === "passed") return true;
   showIdentityResult(state);
-  identityMessage(state.message || "");
+  candidateFeedback.show('demo-authentication-error', demoIdentity ? state.demo?.message || '' : '');
+  identityMessage(state.message || '');
   showPanel("identity-panel");
   byId("identity-camera-preview").play().catch(() => {});
   return false;
@@ -140,11 +167,34 @@ async function prepareIdentity() {
 
 window.assessbridgeIdentity = { prepare: prepareIdentity, reset: resetIdentityCapture, configure: configureIdentity };
 window.addEventListener("identity-crop-change", () => {
-  byId("verify-identity").disabled = identityCheckInProgress || captureInProgress || !capturedCard || !capturedSelfie || window.assessbridgeCardCrop.isOpen();
+  byId("verify-identity").disabled = identityCheckInProgress || captureInProgress || !captureReady();
+});
+
+byId('authenticate-demo').addEventListener('click', async () => {
+  const button = byId('authenticate-demo');
+  if (identityCheckInProgress || captureInProgress) return;
+  identityCheckInProgress = true;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Opening authentication...';
+  byId('verify-identity').disabled = true;
+  candidateFeedback.show('demo-authentication-error', '');
+  try {
+    const response = await roomRequest('/api/candidate/identity/esignet/start', {method:'POST'});
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(candidateFeedback.serverError(response,data,'Could not start demo authentication. Try again.'));
+    window.location.assign(data.authorization_url);
+  } catch (error) {
+    candidateFeedback.show('demo-authentication-error', error.message);
+    identityCheckInProgress = false;
+    button.disabled = false;
+    button.textContent = label;
+    byId('verify-identity').disabled = !captureReady();
+  }
 });
 
 byId("verify-identity").addEventListener("click", async () => {
-  if (identityCheckInProgress || !capturedCard || !capturedSelfie || window.assessbridgeCardCrop.isOpen()) return;
+  if (identityCheckInProgress || !captureReady()) return;
   identityCheckInProgress = true;
   window.assessbridgeCardCrop.setBusy(true);
   for (const kind of ["card", "selfie"]) byId(`capture-${kind}`).disabled = true;
@@ -153,13 +203,17 @@ byId("verify-identity").addEventListener("click", async () => {
   button.textContent = "Checking identity…";
   identityMessage("");
   try {
-    const response = await roomRequest("/api/candidate/identity/verify", {
+    const response = await roomRequest(demoIdentity ? '/api/candidate/identity/esignet/complete' : "/api/candidate/identity/verify", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ card: capturedCard, selfie: capturedSelfie,
+      body: JSON.stringify(demoIdentity ? {selfie:capturedSelfie} : { card: capturedCard, selfie: capturedSelfie,
         ...(window.assessbridgeCardCrop.corners() ? { card_corners: window.assessbridgeCardCrop.corners() } : {}) }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(candidateFeedback.serverError(response, result, "Identity check could not run. Try again."));
+    if (!response.ok) {
+      const photoGuidance = demoIdentity && typeof result.detail === 'string'
+        && (response.status === 422 || (response.status === 403 && result.detail.startsWith('Authenticate')));
+      throw new Error(photoGuidance ? result.detail : candidateFeedback.serverError(response, result, "Identity check could not run. Try again."));
+    }
     showIdentityResult(result);
     if (result.status !== "passed") {
       identityMessage(result.message || "The images could not be matched. Retake both images and try again.");
@@ -174,7 +228,7 @@ byId("verify-identity").addEventListener("click", async () => {
     identityCheckInProgress = false;
     window.assessbridgeCardCrop.setBusy(false);
     for (const kind of ["card", "selfie"]) byId(`capture-${kind}`).disabled = false;
-    button.textContent = "Check identity";
-    button.disabled = !capturedCard || !capturedSelfie || window.assessbridgeCardCrop.isOpen();
+    button.textContent = demoIdentity ? 'Save session photo' : 'Check identity';
+    button.disabled = !captureReady();
   }
 });

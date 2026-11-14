@@ -7,12 +7,12 @@
     <title>Employer workspace | AssessBridge</title>
     <link rel="stylesheet" href="css/employer.css?v=20261113-lifecycle" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
-    <script src="/js/employer.js?v=20261113-roster-removal" defer></script>
+    <script src="/js/employer.js?v=20261114-esignet-final" defer></script>
     <script src="js/connectivity-case.js?v=20261114-readiness" defer></script>
     <link rel="stylesheet" href="/css/reporting.css?v=20261114-refined" />
     <script src="/js/reporting.js?v=20261114-refined" defer></script>
     <script src="/js/casework.js?v=20261113" defer></script>
-    <script src="js/employer-review.js?v=20261114-reports-ui" defer></script>
+    <script src="js/employer-review.js?v=20261114-esignet-final" defer></script>
     <link rel="stylesheet" href="css/employer-review.css?v=20261114-readiness" />
     <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/personnel.css?v=20261113-roster-removal" />
@@ -137,6 +137,7 @@
                     <fieldset class="choice-group"><legend>Identity check</legend><div class="choice-grid">
                       <label class="choice-option"><input type="radio" name="identity-policy" value="Fayda ID" checked /><span>Fayda ID card</span></label>
                       <label class="choice-option"><input type="radio" name="identity-policy" value="Other ID cards" /><span>Other ID cards</span></label>
+                      <label id="demo-identity-option" class="choice-option" hidden><input type="radio" name="identity-policy" value="Fayda demo (eSignet)" /><span>Fayda demo authentication</span></label>
                     </div><p class="fixed-rule">A matching printed name and photo are required. The name must use Latin letters.</p></fieldset>
                   </div>
                 </section>

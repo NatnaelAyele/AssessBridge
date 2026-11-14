@@ -1,0 +1,11 @@
+{
+  "file": "rtdetr_r18vd_objects365.onnx",
+  "sha256": "251f73171648a0e921793e3711543daad3a3c98e6b2c241b8516a35e9abd75fb",
+  "upstream_commit": "df2a96c8c3a098567a1149bf0248da6efe6d495d",
+  "weights_sha256": "127b6e675ad7a44c29220d659182d462426e9591ccde8aed5ecce7e3c56b2d9c",
+  "dataset": "Objects365-v2",
+  "classes": {
+    "243": "tablet",
+    "316": "calculator"
+  }
+}

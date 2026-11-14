@@ -32,6 +32,13 @@ SEB_CONFIG_PASSWORD = os.getenv("SEB_CONFIG_PASSWORD", "")
 SEB_QUIT_PASSWORD = os.getenv("SEB_QUIT_PASSWORD", "")
 SEB_REQUIRED = os.getenv("SEB_REQUIRED", "true").lower() == "true"
 
+# Explicit opt-in: this provider authenticates fictional identities only.
+ESIGNET_DEMO_ENABLED = os.getenv("ESIGNET_DEMO_ENABLED", "false").lower() == "true"
+ESIGNET_ISSUER = os.getenv("ESIGNET_ISSUER", "http://127.0.0.1:3000").rstrip("/")
+ESIGNET_CLIENT_ID = os.getenv("ESIGNET_CLIENT_ID", "assessbridge-demo")
+ESIGNET_REDIRECT_URI = os.getenv("ESIGNET_REDIRECT_URI", SEB_BASE_URL + "/identity/esignet/callback")
+ESIGNET_PRIVATE_KEY_FILE = ROOT_DIR / os.getenv("ESIGNET_PRIVATE_KEY_FILE", "var/esignet/client-private.pem")
+
 _recordings_path = Path(os.getenv("RECORDINGS_DIR", "var/recordings"))
 RECORDINGS_DIR = (_recordings_path if _recordings_path.is_absolute() else ROOT_DIR / _recordings_path).resolve()
 RECORDING_KEY = os.getenv("RECORDING_KEY", "").strip()

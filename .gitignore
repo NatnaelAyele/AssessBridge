@@ -1,0 +1,99 @@
+# Local secrets. Commit only the sanitized setup template.
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+.envrc
+.secrets/
+secrets/
+credentials/
+secrets.json
+credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Generated SEB files contain local exam and security configuration.
+*.seb
+
+# One-off local demonstration seeds; use create_user.py for account setup.
+/backend/seed_f1_knowledge.py
+/backend/seed_auditor.py
+
+# Local development notes and scratch work.
+/todo
+/scratch/
+/tmp/
+/temp/
+
+# Local recordings, identity evidence, installed tools, logs and screenshots.
+/var/
+/recordings/
+/uploads/
+/evidence/
+/identity-captures/
+*.enc
+*.log
+*.log.*
+
+# Database exports and local databases. Keep backend/schema.sql and migrations.
+/backups/
+/dumps/
+/*.sql
+*_dump.sql
+*-dump.sql
+*_backup.sql
+*-backup.sql
+*.sql.gz
+*.dump
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db
+
+# Environments, Python caches and generated test/build output.
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+/coverage/
+/build/
+/dist/
+*.egg-info/
+
+# Downloaded/exported model weights; keep model manifests and fetch scripts.
+/backend/models/*.onnx
+/backend/models/*.download
+/backend/models/*.pt
+/backend/models/*.pth
+/backend/models/*.pdparams
+/backend/models/*.pdmodel
+/backend/models/*.pdiparams
+
+# Temporary browser test pages can contain generated login credentials.
+/frontend/js/*-probe.html
+
+# Editor, OS and temporary files.
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+*.bak
+*.orig

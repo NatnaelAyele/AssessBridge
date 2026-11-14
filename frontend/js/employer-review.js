@@ -411,7 +411,7 @@ window.employerReview = (() => {
       ["How exam ended", endMethod],
       ["Automatic multiple choice grade", report.scores.objective_possible ? `${report.scores.objective_earned} / ${report.scores.objective_possible}` : "—"],
       ["Final total grade", report.outcome === "disqualified" ? "Disqualified" : report.decision ? score(scoreValue, report.scores.possible) : report.attempt_state !== "in_progress" ? "Awaiting review" : "In progress"],
-      ["Identity check", report.identity?.status === "passed" ? "Passed" : report.identity?.status === "failed" ? "Failed" : "Not checked"]]);
+      ["Identity check", report.identity?.verification_method === 'esignet_demo' ? 'Demo identity authenticated' : report.identity?.status === "passed" ? "Passed" : report.identity?.status === "failed" ? "Failed" : "Not checked"]]);
     const showConcern=(id,value,title)=>{sessionMessages.clear(id);if(value)sessionMessages.show({id,target:el(id),tone:'warning',text:`${title}: ${value.reason}\nRecorded by ${value.actor_name} / ${date(value.created_at)}`});};
     showConcern('review-audit-concern',report.audit_concern,'Audit needs attention');showConcern('review-assessment-hold',report.publication_hold,'Publication on hold');
     renderCoverage(); renderHistory(); renderQuestions(); renderEvents(); renderFindingHistory(); renderRecording(); renderConnectivity();
