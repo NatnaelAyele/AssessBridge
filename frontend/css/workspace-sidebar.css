@@ -8,7 +8,6 @@
   border-color: #103f7c;
 }
 .sidebar .brand, .admin-sidebar .company-brand { color: #fff; }
-.admin-sidebar .brand-symbol { background: #fff; color: var(--workspace-sidebar-bg); }
 .sidebar .workspace-label, .admin-sidebar .workspace-label { color: #b8cfee; }
 .sidebar .nav-item, .admin-sidebar .nav-link { color: #d5e4f7; }
 .sidebar .nav-item:hover, .admin-sidebar .nav-link:hover {

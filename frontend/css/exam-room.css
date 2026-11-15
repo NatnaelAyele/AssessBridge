@@ -5,7 +5,6 @@ button, input { font: inherit; }
 [hidden] { display: none !important; }
 .room-shell { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 30px 20px 70px; }
 .room-header { display: flex; align-items: center; gap: 10px; align-self: flex-start; color: #0b4c9c; font-size: 19px; font-weight: 800; letter-spacing: -.04em; }
-.brand-mark { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; background: #0b58ad; color: #fff; }
 .room-card { width: min(100%, 760px); margin: clamp(45px, 9vh, 95px) auto 0; padding: clamp(26px, 5vw, 53px); border: 1px solid #e0eaf4; border-radius: 16px; background: #fff; box-shadow: 0 18px 48px rgba(18, 61, 106, .07); }
 .eyebrow { margin: 0 0 11px; color: #0b58ad; font-size: 11px; font-weight: 800; letter-spacing: .17em; }
 h1 { margin: 0 0 30px; font-size: clamp(29px, 4vw, 39px); letter-spacing: -.045em; }
