@@ -123,7 +123,18 @@
 .review-player-integrated .review-video-range::-moz-range-thumb { background: #3b82f6; box-shadow: none; }
 .review-player-integrated .review-player-buttons { justify-content: space-between; gap: 8px; }
 .review-player-integrated button { min-width: 34px; min-height: 34px; padding: 5px 7px; border: 0; border-radius: 5px; background: transparent; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
-.review-player-integrated button:hover,.review-player-integrated button:focus-visible { background: rgba(255,255,255,.2); }
+.review-full-player .review-player-integrated button:hover:not(:disabled),
+.review-full-player .review-player-integrated button:active,
+.review-full-player .review-player-integrated button:focus-visible {
+  background: transparent;
+  color: #fff;
+  box-shadow: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+.review-full-player .review-player-integrated button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+}
 .review-player-integrated .review-player-time { margin: 0; color: #fff; font-weight: 700; }
 .review-player-integrated .review-player-volume { width: 64px; accent-color: #3b82f6; }
 .review-player-integrated .review-player-speed { margin-left: auto; }

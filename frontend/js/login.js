@@ -1,7 +1,6 @@
 const form = document.querySelector("#login-form");
 const username = document.querySelector("#username");
 const password = document.querySelector("#password");
-const togglePassword = document.querySelector("#toggle-password");
 const formMessage = document.querySelector("#form-message");
 const signedInPanel = document.querySelector("#signed-in-panel");
 const signOutButton = document.querySelector("#sign-out-button");
@@ -47,13 +46,6 @@ function showAuthenticated(user) {
   loginTask.clearAll();
   signOutTask.clearAll();
 }
-
-togglePassword.addEventListener("click", () => {
-  const isVisible = password.type === "password";
-  password.type = isVisible ? "text" : "password";
-  togglePassword.setAttribute("aria-label", isVisible ? "Hide password" : "Show password");
-  togglePassword.setAttribute("aria-pressed", String(isVisible));
-});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
