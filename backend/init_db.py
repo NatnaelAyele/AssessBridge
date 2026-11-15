@@ -167,3 +167,6 @@ migrate_retention()
 
 from migrate_esignet import migrate as migrate_esignet
 migrate_esignet()
+
+from migrate_esignet_only import migrate as migrate_esignet_only
+migrate_esignet_only()

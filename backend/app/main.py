@@ -23,7 +23,7 @@ from .candidate_assessments import candidate_assessments
 from .db import database
 from .exam_sessions import disqualify_exam_attempt, heartbeat_exam_attempt, navigate_exam, read_exam_state, save_exam_answer, start_exam_attempt, submit_exam_attempt, submit_expired_attempts
 from .invitations import EMAIL_PATTERN, SendInvitationsRequest, assessment_detail, invitation_status, list_assessments, send_all_invitations
-from .identity import MAX_IMAGE_BYTES, clear_prestart_identity_access, identity_state, purge_expired_identity_evidence, verify_identity
+from .identity import clear_prestart_identity_access, identity_state, purge_expired_identity_evidence
 from .registration import register_candidate, resend_verification, verify_candidate_email
 from .recordings import (MAX_CHUNK_BYTES, employer_recording, encryption_key, finalize_stale_recordings,
                          finish_part, finish_recording, open_part, purge_expired_recordings,
@@ -156,6 +156,8 @@ async def expire_exam_attempts() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    from .esignet_runtime import start_local_runtime, stop_local_runtime
+    identity_runtime = start_local_runtime()
     sweeper = asyncio.create_task(expire_exam_attempts())
     from .monitoring.service import supervise
     monitoring = asyncio.create_task(supervise())
@@ -168,6 +170,7 @@ async def lifespan(_app: FastAPI):
         monitoring.cancel()
         with suppress(asyncio.CancelledError):
             await monitoring
+        await asyncio.to_thread(stop_local_runtime, identity_runtime)
 
 
 app = FastAPI(title="AssessBridge API", lifespan=lifespan)
@@ -481,7 +484,7 @@ def exam_room_state(request: Request, user: UserInfo = Depends(current_user)) ->
     except mysql.connector.Error as exc:
         raise unavailable() from exc
     return {"title": exam["title"], "duration_minutes": exam["duration_minutes"], "consented": agreed,
-            "identity_policy": exam["identity_policy"] or "Fayda ID", "retention":retention.notice(exam["invitation_id"])}
+            "identity_policy": esignet.POLICY, "retention":retention.notice(exam["invitation_id"])}
 
 
 @app.post("/api/candidate/exam-room/consent")
@@ -517,32 +520,6 @@ def get_candidate_identity(request: Request, response: Response, user: UserInfo 
     return identity_state(exam["invitation_id"], user.id, current_exam_fingerprint(request))
 
 
-@app.post("/api/candidate/identity/verify")
-async def verify_candidate_identity(request: Request, response: Response, user: UserInfo = Depends(current_user)) -> dict:
-    exam = authorized_exam(request, user)
-    require_seb(request, "/exam-room", exam["seb_config_key"])
-    raw = bytearray()
-    max_body = 2 * ((MAX_IMAGE_BYTES + 2) // 3 * 4) + 1024
-    async for chunk in request.stream():
-        raw.extend(chunk)
-        if len(raw) > max_body:
-            raise HTTPException(status_code=413, detail="Images are too large")
-    try:
-        payload = json.loads(raw)
-        if not isinstance(payload, dict) or not {"card", "selfie"} <= set(payload) or set(payload) - {"card", "selfie", "card_corners"}:
-            raise ValueError("Invalid image fields")
-        if not isinstance(payload["card"], str) or not isinstance(payload["selfie"], str):
-            raise ValueError("Invalid image fields")
-        card = base64.b64decode(payload["card"], validate=True)
-        selfie = base64.b64decode(payload["selfie"], validate=True)
-    except (ValueError, TypeError, binascii.Error) as exc:
-        raise HTTPException(status_code=422, detail="Send card and camera images as base64 JPEG or PNG") from exc
-    result = await asyncio.to_thread(verify_identity, exam["invitation_id"], user.id, POLICY_VERSION,
-                                     current_exam_fingerprint(request), card, selfie, payload.get("card_corners"))
-    response.headers["Cache-Control"] = "no-store"
-    return result
-
-
 @app.get('/api/identity-options')
 def identity_options(user: UserInfo = Depends(current_user)):
     return {'esignet_demo':esignet.enabled()}
@@ -566,7 +543,7 @@ def demo_authentication_callback(request:Request,state:str=Query(min_length=20,m
     try:
         esignet.finish(state,code,error,exam['invitation_id'],user.id,current_exam_fingerprint(request),POLICY_VERSION)
     except HTTPException as exc:
-        if exc.status_code not in (403,503) or not esignet.state(exam['invitation_id'],user.id,current_exam_fingerprint(request))['message']:
+        if exc.status_code not in (403,409,503):
             raise
         # A recorded flow failure is shown beside the retry action in the room.
     return RedirectResponse('/exam-room',status_code=303,headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
