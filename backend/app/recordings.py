@@ -10,7 +10,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import mysql.connector
+import psycopg
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
@@ -49,7 +49,7 @@ def validate_mime(value: str) -> str:
 def create_for_session(cursor, session_id: int, started_at: datetime) -> None:
     cursor.execute(
         """INSERT INTO assessment_recordings (session_id, storage_token, started_at)
-           VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE id = id""",
+           VALUES (%s, %s, %s) ON CONFLICT DO NOTHING RETURNING id""",
         (session_id, secrets.token_hex(16), started_at),
     )
 
@@ -91,7 +91,7 @@ def open_part(invitation_id: int, candidate_id: int, mime_type: str) -> dict:
                 raise HTTPException(status_code=409, detail="The exam is no longer active")
             cursor.execute(
                 """INSERT INTO assessment_recording_parts (recording_id, mime_type, started_at)
-                   VALUES (%s, %s, %s)""",
+                   VALUES (%s, %s, %s) RETURNING id""",
                 (recording["recording_id"], mime_type, now),
             )
             part_id = cursor.lastrowid
@@ -100,7 +100,7 @@ def open_part(invitation_id: int, candidate_id: int, mime_type: str) -> dict:
             connection.commit()
             cursor.close()
             return {"part_id": part_id, "next_sequence": 0}
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Recording service unavailable") from exc
 
 
@@ -181,7 +181,7 @@ def store_chunk(invitation_id: int, candidate_id: int, part_id: int, sequence: i
             connection.commit()
             cursor.close()
             return {"received": True, "sequence": sequence, "duplicate": False}
-    except (mysql.connector.Error, OSError) as exc:
+    except (psycopg.Error, OSError) as exc:
         if temporary:
             temporary.unlink(missing_ok=True)
         if created_path:
@@ -213,7 +213,7 @@ def finish_part(invitation_id: int, candidate_id: int, part_id: int, final_seque
             connection.commit()
             cursor.close()
             return {"status": status}
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Recording service unavailable") from exc
 
 
@@ -245,7 +245,7 @@ def finish_recording(invitation_id: int, candidate_id: int) -> dict:
             cursor.close()
             return {"status": status, "parts": len(parts), "upload_deadline_at": (ended_at(recording) + timedelta(seconds=FINAL_UPLOAD_SECONDS)).isoformat()+"Z" if ended_at(recording) else None,
                     "total_bytes": sum(part["total_bytes"] for part in parts)}
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Recording service unavailable") from exc
 
 
@@ -283,7 +283,7 @@ def recording_state(invitation_id: int, candidate_id: int) -> dict:
             return {"status": recording["recording_status"], "parts": parts,
                     "upload_deadline_at": (ended_at(recording) + timedelta(seconds=FINAL_UPLOAD_SECONDS)).isoformat()+"Z" if ended_at(recording) else None,
                     "total_bytes": sum(part["total_bytes"] for part in parts)}
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Recording service unavailable") from exc
 
 
@@ -293,27 +293,30 @@ def finalize_stale_recordings() -> None:
         cursor = connection.cursor()
         cursor.execute(
             """UPDATE assessment_recording_parts p
-               JOIN assessment_recordings r ON r.id = p.recording_id
-               JOIN assessment_exam_sessions s ON s.id = r.session_id
-               SET p.status = 'incomplete', p.finalized_at = %s
-               WHERE p.status = 'recording' AND COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at) < %s""",
+               SET status = 'incomplete', finalized_at = %s
+               FROM assessment_recordings r JOIN assessment_exam_sessions s ON s.id = r.session_id
+               WHERE r.id = p.recording_id AND p.status = 'recording'
+                 AND COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at) < %s""",
             (now, now - timedelta(seconds=FINAL_UPLOAD_SECONDS)),
         )
         cursor.execute(
             """UPDATE assessment_recordings r
-               JOIN assessment_exam_sessions s ON s.id = r.session_id
+               SET status = CASE WHEN p.part_count > 0 AND p.incomplete_count = 0
+                                 THEN 'complete' ELSE 'incomplete' END,
+                   finalized_at = %s,
+                   expires_at = (COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at)
+                                 + COALESCE(rp.monitoring_days,%s) * INTERVAL '1 day')
+               FROM assessment_recordings source
+               JOIN assessment_exam_sessions s ON s.id=source.session_id
                JOIN assessment_invitations i ON i.id=s.invitation_id
                LEFT JOIN assessment_retention_policies rp ON rp.assessment_id=i.assessment_id
                LEFT JOIN (
                    SELECT recording_id, COUNT(*) AS part_count,
-                          SUM(status <> 'complete') AS incomplete_count
+                          SUM((status <> 'complete')::integer) AS incomplete_count
                    FROM assessment_recording_parts GROUP BY recording_id
-               ) p ON p.recording_id = r.id
-               SET r.status = CASE WHEN p.part_count > 0 AND p.incomplete_count = 0
-                                   THEN 'complete' ELSE 'incomplete' END,
-                   r.finalized_at = %s,
-                   r.expires_at = DATE_ADD(COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at), INTERVAL COALESCE(rp.monitoring_days,%s) DAY)
-               WHERE r.status = 'recording' AND COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at) < %s""",
+               ) p ON p.recording_id = source.id
+               WHERE r.id=source.id AND r.status = 'recording'
+                 AND COALESCE(s.submitted_at, s.disqualified_at, s.interrupted_at) < %s""",
             (now, RECORDING_RETENTION_DAYS, now - timedelta(seconds=FINAL_UPLOAD_SECONDS)),
         )
         connection.commit()
@@ -358,7 +361,7 @@ def purge_expired_recordings() -> int:
         for item in expired:
             try:
                 delete_storage(item["storage_token"])
-                cursor.execute("DELETE c FROM assessment_recording_chunks c JOIN assessment_recording_parts p ON p.id = c.part_id WHERE p.recording_id = %s", (item["id"],))
+                cursor.execute('DELETE FROM assessment_recording_chunks c USING assessment_recording_parts p WHERE p.id = c.part_id AND p.recording_id = %s', (item["id"],))
                 cursor.execute("DELETE FROM assessment_recording_parts WHERE recording_id = %s", (item["id"],))
                 cursor.execute("UPDATE assessment_recordings SET status = 'deleted' WHERE id = %s", (item["id"],))
                 connection.commit()
@@ -394,13 +397,13 @@ def employer_recording(assessment_id: int, invitation_id: int, employer_id: int,
             parts = cursor.fetchall()
             cursor.execute(
                 """INSERT INTO assessment_recording_access_audit
-                   (recording_id, actor_user_id, accessed_at, source_ip) VALUES (%s, %s, %s, %s)""",
+                   (recording_id, actor_user_id, accessed_at, source_ip) VALUES (%s, %s, %s, %s) RETURNING id""",
                 (recording["id"], actor_id or employer_id, utc_now(), source_ip),
             )
             connection.commit()
             cursor.close()
             return {**recording, "parts": parts}
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Recording service unavailable") from exc
 
 
@@ -418,7 +421,7 @@ def stream_part(recording: dict, part_id: int, range_header: str | None) -> Stre
             )
             chunks = cursor.fetchall()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Recording service unavailable") from exc
     total = sum(chunk["size_bytes"] for chunk in chunks)
     if total != part["total_bytes"] or not chunks:

@@ -6,7 +6,7 @@ import hashlib
 import json
 import time
 
-import mysql.connector
+import psycopg
 
 from fastapi import HTTPException
 
@@ -37,10 +37,10 @@ def create_run(cursor, session, exam):
     policy = deepcopy(POLICY)
     policy["prohibited_items"] = [item.strip() for item in (exam.get("rules_text") or "").split(",") if item.strip()]
     cursor.execute(
-        """INSERT IGNORE INTO assessment_monitoring_runs
+        """INSERT INTO assessment_monitoring_runs
            (session_id, policy_json, capabilities_json, reference_ciphertext, reference_expires_at, created_at)
            SELECT %s, %s, %s, selfie_ciphertext, CASE WHEN %s THEN %s ELSE evidence_expires_at END, %s FROM assessment_identity_checks
-           WHERE invitation_id = %s AND candidate_user_id = %s AND status = 'passed'""",
+           WHERE invitation_id = %s AND candidate_user_id = %s AND status = 'passed' ON CONFLICT DO NOTHING""",
         (session["id"], json.dumps(policy), json.dumps(CAPABILITIES),
          retention["legacy"], now()+timedelta(days=retention["monitoring_days"]), now(),
          session["invitation_id"], session["candidate_user_id"]),
@@ -49,8 +49,8 @@ def create_run(cursor, session, exam):
 
 def create_job(cursor, session_id, part_id):
     cursor.execute(
-        """INSERT IGNORE INTO assessment_monitoring_jobs (part_id, session_id, updated_at)
-           SELECT %s, session_id, %s FROM assessment_monitoring_runs WHERE session_id = %s""",
+        """INSERT INTO assessment_monitoring_jobs (part_id, session_id, updated_at)
+           SELECT %s, session_id, %s FROM assessment_monitoring_runs WHERE session_id = %s ON CONFLICT DO NOTHING""",
         (part_id, now(), session_id),
     )
 
@@ -62,8 +62,8 @@ def save_events(cursor, session_id, part_id, events):
                (event_key, session_id, part_id, event_type, category, start_ms, end_ms,
                 confidence, closed, details_json, created_at, updated_at)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-               ON DUPLICATE KEY UPDATE end_ms=VALUES(end_ms), confidence=VALUES(confidence),
-                 closed=VALUES(closed), details_json=VALUES(details_json), updated_at=VALUES(updated_at)""",
+               ON CONFLICT (event_key) DO UPDATE SET  end_ms=EXCLUDED.end_ms, confidence=EXCLUDED.confidence,
+                 closed=EXCLUDED.closed, details_json=EXCLUDED.details_json, updated_at=EXCLUDED.updated_at RETURNING id""",
             (event["event_key"], session_id, part_id, event["event_type"], event["category"],
              event["start_ms"], event["end_ms"], event["confidence"], event["closed"],
              json.dumps(event["details"], allow_nan=False), now(), now()),
@@ -75,8 +75,8 @@ def record_sample(session_id, part_id, stream, start_ms, end_ms, metrics, events
         try:
             _record_sample(session_id, part_id, stream, start_ms, end_ms, metrics, events)
             return
-        except mysql.connector.Error as exc:
-            if exc.errno not in {1205, 1213} or attempt == 2:
+        except psycopg.Error as exc:
+            if exc.sqlstate not in {'40P01', '40001', '55P03'} or attempt == 2:
                 raise
             time.sleep(.05 * (attempt + 1))
 
@@ -89,8 +89,8 @@ def _record_sample(session_id, part_id, stream, start_ms, end_ms, metrics, event
         cursor.execute("UPDATE assessment_monitoring_jobs SET updated_at=%s WHERE part_id=%s", (now(), part_id))
         cursor.execute(
             """INSERT INTO assessment_monitoring_samples (part_id,stream,start_ms,end_ms,metrics_json)
-               VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE
-                 end_ms=VALUES(end_ms),metrics_json=VALUES(metrics_json)""",
+               VALUES (%s,%s,%s,%s,%s) ON CONFLICT (part_id,stream,start_ms) DO UPDATE SET
+                 end_ms=EXCLUDED.end_ms,metrics_json=EXCLUDED.metrics_json""",
             (part_id, stream, start_ms, end_ms, json.dumps(metrics, allow_nan=False)),
         )
         save_events(cursor, session_id, part_id, events)
@@ -186,8 +186,8 @@ def report(assessment_id, invitation_id, employer_id, after_id=0, limit=200):
         cursor.execute(
             """SELECT x.stream,COUNT(*) AS sample_count,SUM(x.end_ms-x.start_ms) AS analysed_ms,
                       MAX(x.end_ms) AS last_media_ms,
-                      SUM(CASE WHEN JSON_EXTRACT(x.metrics_json,'$.identity_checked')=true THEN x.end_ms-x.start_ms ELSE 0 END) AS identity_checked_ms,
-                      SUM(CASE WHEN JSON_EXTRACT(x.metrics_json,'$.face_usable')=true THEN x.end_ms-x.start_ms ELSE 0 END) AS usable_face_ms
+                      SUM(CASE WHEN (x.metrics_json->>'identity_checked')::boolean=true THEN x.end_ms-x.start_ms ELSE 0 END) AS identity_checked_ms,
+                      SUM(CASE WHEN (x.metrics_json->>'face_usable')::boolean=true THEN x.end_ms-x.start_ms ELSE 0 END) AS usable_face_ms
                FROM assessment_monitoring_samples x JOIN assessment_monitoring_jobs j ON j.part_id=x.part_id
                WHERE j.session_id=%s GROUP BY x.stream""", (session["id"],))
         coverage = cursor.fetchall()

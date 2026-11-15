@@ -5,7 +5,7 @@ import threading
 from functools import lru_cache
 from datetime import datetime, timezone
 import cv2
-import mysql.connector
+import psycopg
 import numpy as np
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -101,7 +101,7 @@ def identity_state(invitation_id: int, candidate_id: int, access_fingerprint: st
                            (candidate_id, invitation_id, candidate_id))
             row = cursor.fetchone()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Identity check unavailable") from exc
     from . import esignet
     current = row and row["access_fingerprint"] == access_fingerprint and row['verification_method'] == esignet.METHOD and esignet.enabled()
@@ -124,13 +124,13 @@ def purge_expired_identity_evidence() -> int:
             cursor = connection.cursor()
             cursor.execute("""UPDATE assessment_identity_checks
                               SET card_ciphertext = NULL, selfie_ciphertext = NULL
-                              WHERE evidence_expires_at <= UTC_TIMESTAMP()
+                              WHERE evidence_expires_at <= (statement_timestamp() AT TIME ZONE 'UTC')
                                 AND (card_ciphertext IS NOT NULL OR selfie_ciphertext IS NOT NULL)""")
             count = cursor.rowcount
             connection.commit()
             cursor.close()
             return count
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Identity evidence cleanup unavailable") from exc
 
 
@@ -144,5 +144,5 @@ def clear_prestart_identity_access(invitation_id: int, candidate_id: int, access
                            (invitation_id, candidate_id, access_fingerprint))
             connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Identity check unavailable") from exc

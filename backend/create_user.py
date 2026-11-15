@@ -32,7 +32,7 @@ password_hash = hash_password(password)
 with database() as connection:
     cursor = connection.cursor()
     cursor.execute(
-        "INSERT INTO users (username, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+        'INSERT INTO users (username, email, password_hash, role) VALUES (%s, %s, %s, %s) RETURNING id',
         (username, email, password_hash, args.role),
     )
     connection.commit()

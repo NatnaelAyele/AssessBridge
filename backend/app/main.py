@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Literal
 import re
 
-import mysql.connector
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -208,7 +208,7 @@ def unauthorized() -> HTTPException:
 
 def audit(cursor, event_type: str, request: Request, user_id: int | None = None, username: str | None = None) -> None:
     cursor.execute(
-        "INSERT INTO auth_audit (user_id, username_attempt, event_type, source_ip, expires_at) VALUES (%s, %s, %s, %s, %s)",
+        'INSERT INTO auth_audit (user_id, username_attempt, event_type, source_ip, expires_at) VALUES (%s, %s, %s, %s, %s) RETURNING id',
         (user_id, username, event_type, request.client.host if request.client else None,datetime.now(timezone.utc).replace(tzinfo=None)+timedelta(days=SECURITY_AUDIT_RETENTION_DAYS) if SECURITY_AUDIT_RETENTION_DAYS else None),
     )
 
@@ -224,7 +224,7 @@ def require_role(role: Role, request: Request, user: UserInfo) -> None:
             audit(cursor, "authorization_denied", request, user.id)
             connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
     raise HTTPException(status_code=403, detail="Access denied")
 
@@ -246,12 +246,12 @@ def current_user(request: Request) -> UserInfo:
                    FROM auth_sessions s
                    JOIN users u ON u.id = s.user_id
                    WHERE s.token_id = %s AND u.id = %s
-                     AND s.expires_at > UTC_TIMESTAMP() AND u.is_active = TRUE""",
+                     AND s.expires_at > (statement_timestamp() AT TIME ZONE 'UTC') AND u.is_active = TRUE""",
                 (token_id, user_id),
             )
             row = cursor.fetchone()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
 
     if row is None:
@@ -320,7 +320,7 @@ def exam_seb_configuration(exam_username: str) -> Response:
             )
             row = cursor.fetchone()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
     if not row or not row["seb_config_blob"]:
         raise HTTPException(status_code=404, detail="Exam configuration unavailable")
@@ -373,7 +373,7 @@ def enter_exam(credentials: ExamCredentials, request: Request, response: Respons
                    FROM assessment_invitations i
                    JOIN assessments a ON a.id = i.assessment_id
                    LEFT JOIN assessment_exam_sessions s ON s.invitation_id = i.id
-                   WHERE i.exam_username = %s FOR UPDATE""",
+                   WHERE i.exam_username = %s FOR UPDATE OF i""",
                 (credentials.username.strip(),),
             )
             invitation = cursor.fetchone()
@@ -396,7 +396,7 @@ def enter_exam(credentials: ExamCredentials, request: Request, response: Respons
                 )
                 connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -443,7 +443,7 @@ def authorized_invitation(request: Request, user: UserInfo) -> dict:
             )
             exam = cursor.fetchone()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
     if not exam:
         raise HTTPException(status_code=403, detail="Exam access is unavailable")
@@ -487,7 +487,7 @@ def exam_room_state(request: Request, user: UserInfo = Depends(current_user)) ->
             )
             agreed = cursor.fetchone() is not None
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
     return {"title": exam["title"], "duration_minutes": exam["duration_minutes"], "consented": agreed,
             "identity_policy": esignet.POLICY, "retention":retention.notice(exam["invitation_id"])}
@@ -508,12 +508,12 @@ def accept_exam_consent(decision: ConsentDecision, request: Request, user: UserI
             cursor.execute(
                 """INSERT INTO assessment_consents (invitation_id, candidate_user_id, policy_version)
                    VALUES (%s, %s, %s)
-                   ON DUPLICATE KEY UPDATE id = id""",
+                   ON CONFLICT DO NOTHING RETURNING id""",
                 (exam["invitation_id"], user.id, POLICY_VERSION),
             )
             connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
     return {"consented": True}
 
@@ -676,7 +676,7 @@ def start_exam(request: Request, response: Response, user: UserInfo = Depends(cu
                 )
                 connection.commit()
                 cursor.close()
-        except mysql.connector.Error as exc:
+        except psycopg.Error as exc:
             raise unavailable() from exc
         response.set_cookie(COOKIE_NAME, token, max_age=remaining_minutes * 60, httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
         response.set_cookie(EXAM_COOKIE_NAME, new_exam_access(user.id, exam["invitation_id"], expires_at, seb_verified=SEB_REQUIRED), max_age=remaining_minutes * 60, httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
@@ -1027,7 +1027,7 @@ def login(credentials: LoginCredentials, request: Request, response: Response) -
             audit(cursor, "login_success", request, user["id"])
             connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise unavailable() from exc
 
     response.set_cookie(
@@ -1069,7 +1069,7 @@ def logout(request: Request, response: Response) -> None:
                     audit(cursor, "logout", request, user_id)
                 connection.commit()
                 cursor.close()
-        except mysql.connector.Error as exc:
+        except psycopg.Error as exc:
             raise unavailable() from exc
     response.delete_cookie(COOKIE_NAME, path="/")
     response.delete_cookie(EXAM_COOKIE_NAME, path="/")

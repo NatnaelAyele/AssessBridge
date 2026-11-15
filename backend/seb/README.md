@@ -1,6 +1,6 @@
 # Safe Exam Browser configuration
 
-`AssessBridge.seb` is a generic password-encrypted configuration for older local invitations. New invitations store their own encrypted configuration and Config Key in MySQL, and their email contains an HTTP(S) launch-page link with an **Open in SEB** action. The server checks the invitation's Config Key at entry and on every exam API request. Current SEB on macOS supplies this key through its JavaScript API; older clients may send the native request header.
+`AssessBridge.seb` is a generic password-encrypted configuration for older local invitations. New invitations store their own encrypted configuration and Config Key in PostgreSQL, and their email contains an HTTP(S) launch-page link with an **Open in SEB** action. The server checks the invitation's Config Key at entry and on every exam API request. Current SEB on macOS supplies this key through its JavaScript API; older clients may send the native request header.
 
 To use it locally:
 

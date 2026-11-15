@@ -86,10 +86,10 @@ def publication_state(assessment_id):
 
 
 def _history_filters(search, period, date_from, date_to):
-    where = ["p.is_legacy=FALSE", "a.ends_at<=UTC_TIMESTAMP()"]
+    where = ["p.is_legacy=FALSE", "a.ends_at<=(statement_timestamp() AT TIME ZONE 'UTC')"]
     parameters = []
     if search.strip():
-        where.append("(LOCATE(LOWER(%s),LOWER(a.title))>0 OR LOCATE(LOWER(%s),LOWER(COALESCE(a.internal_reference,'')))>0)")
+        where.append("(strpos(LOWER(a.title),LOWER(%s))>0 OR strpos(LOWER(COALESCE(a.internal_reference,'')),LOWER(%s))>0)")
         parameters.extend([search.strip(), search.strip()])
     eat = timezone(timedelta(hours=3))
     today = now().replace(tzinfo=timezone.utc).astimezone(eat).date()
@@ -137,7 +137,7 @@ def published_results(publication_id):
         cursor.execute("""SELECT p.id,p.assessment_id,a.title,a.internal_reference,p.publisher_username,
                           p.candidate_count,p.remark,p.created_at FROM assessment_result_publications p
                           JOIN assessments a ON a.id=p.assessment_id
-                          WHERE p.id=%s AND p.is_legacy=FALSE AND a.ends_at<=UTC_TIMESTAMP()""", (publication_id,))
+                          WHERE p.id=%s AND p.is_legacy=FALSE AND a.ends_at<=(statement_timestamp() AT TIME ZONE 'UTC')""", (publication_id,))
         publication = cursor.fetchone()
         if not publication:
             raise HTTPException(404, "Published results not found")
@@ -184,7 +184,7 @@ def publish(assessment_id, publisher_id, payload):
             snapshots.append((invitation["id"], session["candidate_user_id"], json.dumps(snapshot)))
         cursor.execute("""INSERT INTO assessment_result_publications
                           (assessment_id,source_version,publisher_user_id,publisher_username,remark,candidate_count,created_at)
-                          VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                          VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
                        (assessment_id, state["version"], publisher_id, publisher["username"], payload.remark, len(rows), now()))
         publication_id = cursor.lastrowid
         cursor.executemany("INSERT INTO assessment_publication_results (publication_id,invitation_id,candidate_user_id,result_json) VALUES (%s,%s,%s,%s)",

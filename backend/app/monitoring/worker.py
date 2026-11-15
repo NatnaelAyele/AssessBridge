@@ -211,8 +211,9 @@ def process_job(part_id, stop):
     # Also protect individual parts from operator-triggered replay while a
     # scheduler is processing them. Connection loss releases the lock.
     with database() as lock_connection:
+        lock_connection.autocommit = True
         cursor = lock_connection.cursor()
-        cursor.execute("SELECT GET_LOCK(%s,0)", (f"ab_monitor_part:{part_id}",))
+        cursor.execute('SELECT pg_try_advisory_lock(hashtextextended(%s,0))', (f"ab_monitor_part:{part_id}",))
         if cursor.fetchone()[0] != 1:
             return
         _process_job(part_id, stop)
@@ -258,8 +259,9 @@ def _process_job(part_id, stop):
 def run(stop):
     # One scheduler per database, even with multiple API workers/reload processes.
     with database() as lock_connection:
+        lock_connection.autocommit = True
         cursor = lock_connection.cursor()
-        cursor.execute("SELECT GET_LOCK('assessbridge_monitoring_worker',0)")
+        cursor.execute("SELECT pg_try_advisory_lock(hashtextextended('assessbridge_monitoring_worker',0))")
         if cursor.fetchone()[0] != 1:
             return
         ffmpeg()
@@ -280,7 +282,7 @@ def run(stop):
                             LOG.exception("Monitoring job failed")
                 with database() as connection:
                     cur = connection.cursor(dictionary=True)
-                    cur.execute("INSERT INTO monitoring_worker_health (id,heartbeat_at,model_version) VALUES (1,%s,%s) ON DUPLICATE KEY UPDATE heartbeat_at=VALUES(heartbeat_at),model_version=VALUES(model_version)", (now(), MODEL_VERSION))
+                    cur.execute('INSERT INTO monitoring_worker_health (id,heartbeat_at,model_version) VALUES (1,%s,%s) ON CONFLICT (id) DO UPDATE SET  heartbeat_at=EXCLUDED.heartbeat_at,model_version=EXCLUDED.model_version', (now(), MODEL_VERSION))
                     connection.commit()
                     cur.execute(
                         """SELECT j.part_id FROM assessment_monitoring_jobs j

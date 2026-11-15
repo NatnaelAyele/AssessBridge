@@ -1,4 +1,4 @@
-﻿"""Build the local generic SEB configuration (exam-specific configs are stored in MySQL)."""
+﻿"""Build the local generic SEB configuration (exam-specific configs are stored in PostgreSQL)."""
 
 import argparse
 import secrets

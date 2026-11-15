@@ -72,7 +72,7 @@ def add_note(assessment,invitation,user,payload):
    c.execute(sql,(s['id'],payload.reference_key))
    if not c.fetchone():raise HTTPException(422,'This reference does not belong to this session.')
   revision=_advance(c,s['id'],payload.expected_revision)
-  c.execute('INSERT INTO assessment_case_notes(session_id,revision,request_key,payload_hash,body,reference_kind,reference_key,actor_id,actor_name,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(s['id'],revision,str(payload.request_key),digest,payload.reason,payload.reference_kind,payload.reference_key,user,actor(c,user),now()))
+  c.execute('INSERT INTO assessment_case_notes(session_id,revision,request_key,payload_hash,body,reference_kind,reference_key,actor_id,actor_name,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',(s['id'],revision,str(payload.request_key),digest,payload.reason,payload.reference_kind,payload.reference_key,user,actor(c,user),now()))
   _audit(c,s['id'],user,'case_note',None)
   db.commit()
  return {'saved':True,'revision':revision}
@@ -88,7 +88,7 @@ def concern(assessment,invitation,user,payload):
   if exists:return {'saved':True,'duplicate':True}
   status,_=_status(c,s['id'])
   if status['version']!=payload.expected_version or status['outcome_revision']!=payload.expected_outcome:raise HTTPException(409,'The report or audit changed. Reload the report.')
-  c.execute('INSERT INTO assessment_audit_outcomes(session_id,kind,reason,evidence_version,actor_id,actor_name,request_key,payload_hash,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',(s['id'],'needs_attention',payload.reason,payload.expected_version,user,actor(c,user),str(payload.request_key),digest,now()))
+  c.execute('INSERT INTO assessment_audit_outcomes(session_id,kind,reason,evidence_version,actor_id,actor_name,request_key,payload_hash,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',(s['id'],'needs_attention',payload.reason,payload.expected_version,user,actor(c,user),str(payload.request_key),digest,now()))
   db.commit()
  return {'saved':True}
 
@@ -103,7 +103,7 @@ def change_hold(assessment,user,payload):
   if state['version']!=payload.expected_version:raise HTTPException(409,'The assessment or audits changed. Refresh the candidates.')
   latest=latest_hold(c,assessment)
   if payload.kind=='resolved' and (not latest or latest['kind']!='held'):raise HTTPException(409,'There is no active publication hold.')
-  c.execute('INSERT INTO assessment_publication_holds(assessment_id,kind,reason,actor_id,actor_name,request_key,payload_hash,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',(assessment,payload.kind,payload.reason,user,actor(c,user),str(payload.request_key),digest,now()))
+  c.execute('INSERT INTO assessment_publication_holds(assessment_id,kind,reason,actor_id,actor_name,request_key,payload_hash,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',(assessment,payload.kind,payload.reason,user,actor(c,user),str(payload.request_key),digest,now()))
   db.commit()
  return {'saved':True}
 
@@ -159,7 +159,7 @@ def history(assessment,invitation,user,category='all',order='desc',page=1):
     add(table+':'+str(r['id']),r['created_at'],'review',title,details,r['reviewer_username'])
   c.execute('SELECT * FROM assessment_case_notes WHERE session_id=%s',(s['id'],))
   for r in c.fetchall():add('note:'+str(r['id']),r['created_at'],'review','Case note added',r['body'],r['actor_name'],{'kind':'note','key':str(r['id'])})
-  c.execute("SELECT a.* FROM assessment_audit_completions a WHERE a.session_id=%s AND NOT EXISTS(SELECT 1 FROM assessment_audit_outcomes o WHERE o.session_id=a.session_id AND o.kind='audited' AND o.evidence_version=a.evidence_version AND TIMESTAMPDIFF(SECOND,a.created_at,o.created_at)=0)",(s['id'],))
+  c.execute("SELECT a.* FROM assessment_audit_completions a WHERE a.session_id=%s AND NOT EXISTS(SELECT 1 FROM assessment_audit_outcomes o WHERE o.session_id=a.session_id AND o.kind='audited' AND o.evidence_version=a.evidence_version AND trunc(extract(epoch from (o.created_at - a.created_at)))=0)",(s['id'],))
   for r in c.fetchall():add('legacy-audit:'+str(r['id']),r['created_at'],'audit','Audit completed',who=r['auditor_username'])
   c.execute('SELECT * FROM assessment_audit_outcomes WHERE session_id=%s',(s['id'],))
   for r in c.fetchall():add('audit:'+str(r['id']),r['created_at'],'audit','Audit needs attention' if r['kind']=='needs_attention' else 'Audit confirmed',r['reason'],r['actor_name'])

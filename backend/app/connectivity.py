@@ -16,7 +16,7 @@ def ended_at(session):
 
 
 def event(cursor, session_id, kind, at, details=None):
-    cursor.execute("INSERT INTO assessment_connectivity_events (session_id,event_type,occurred_at,details_json) VALUES (%s,%s,%s,%s)",
+    cursor.execute('INSERT INTO assessment_connectivity_events (session_id,event_type,occurred_at,details_json) VALUES (%s,%s,%s,%s) RETURNING id',
                    (session_id, kind, at, json.dumps(details or {})))
 
 

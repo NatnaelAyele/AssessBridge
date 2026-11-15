@@ -54,7 +54,7 @@ def prepare(invitation, candidate, client, auth_token):
 def begin_probe(invitation, client):
     with database() as connection:
         cursor = connection.cursor()
-        cursor.execute("INSERT INTO assessment_network_readiness (invitation_id,client_instance_id,checked_at,upload_started_at) VALUES (%s,%s,UTC_TIMESTAMP(),UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE checked_at=UTC_TIMESTAMP(),upload_started_at=UTC_TIMESTAMP(3),passed=FALSE,upload_bytes=0", (invitation, client))
+        cursor.execute("INSERT INTO assessment_network_readiness (invitation_id,client_instance_id,checked_at,upload_started_at) VALUES (%s,%s,(statement_timestamp() AT TIME ZONE 'UTC'),(statement_timestamp() AT TIME ZONE 'UTC')) ON CONFLICT (invitation_id,client_instance_id) DO UPDATE SET  checked_at=(statement_timestamp() AT TIME ZONE 'UTC'),upload_started_at=(statement_timestamp() AT TIME ZONE 'UTC'),passed=FALSE,upload_bytes=0", (invitation, client))
         connection.commit()
 
 
@@ -66,13 +66,13 @@ def complete_probe(invitation, client, byte_count):
         elapsed = max(1, int((utc_now() - row["upload_started_at"]).total_seconds()*1000)) if row and row["upload_started_at"] else 0
         if not elapsed or byte_count != 131072 or elapsed > 10000:
             raise HTTPException(422, "Connection is too slow or unstable. Restore it and retry the check.")
-        cursor.execute("UPDATE assessment_network_readiness SET passed=TRUE,checked_at=UTC_TIMESTAMP(),upload_bytes=%s,upload_ms=%s,upload_started_at=NULL WHERE invitation_id=%s AND client_instance_id=%s", (byte_count, elapsed, invitation, client))
+        cursor.execute("UPDATE assessment_network_readiness SET passed=TRUE,checked_at=(statement_timestamp() AT TIME ZONE 'UTC'),upload_bytes=%s,upload_ms=%s,upload_started_at=NULL WHERE invitation_id=%s AND client_instance_id=%s", (byte_count, elapsed, invitation, client))
         connection.commit()
         return {"passed": True, "upload_ms": elapsed}
 
 
 def require_readiness(cursor, invitation, client):
-    cursor.execute("SELECT 1 FROM assessment_network_readiness WHERE invitation_id=%s AND client_instance_id=%s AND passed=TRUE AND checked_at>=UTC_TIMESTAMP()-INTERVAL 5 MINUTE", (invitation, client))
+    cursor.execute("SELECT 1 FROM assessment_network_readiness WHERE invitation_id=%s AND client_instance_id=%s AND passed=TRUE AND checked_at>=(statement_timestamp() AT TIME ZONE 'UTC')-(5 * INTERVAL '1 minute')", (invitation, client))
     if not cursor.fetchone():
         raise HTTPException(428, "Complete the connection and storage check before starting")
 
@@ -106,7 +106,7 @@ def verify_live(invitation, candidate, client, selfie):
     import cv2
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT selfie_ciphertext FROM assessment_identity_checks WHERE invitation_id=%s AND candidate_user_id=%s AND status='passed' AND evidence_expires_at>UTC_TIMESTAMP()", (invitation, candidate))
+        cursor.execute("SELECT selfie_ciphertext FROM assessment_identity_checks WHERE invitation_id=%s AND candidate_user_id=%s AND status='passed' AND evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC')", (invitation, candidate))
         row = cursor.fetchone()
     if not row or not row["selfie_ciphertext"]:
         raise HTTPException(409, "The verified identity image is unavailable. Contact the employer.")

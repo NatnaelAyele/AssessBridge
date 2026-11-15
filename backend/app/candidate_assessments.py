@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
-import mysql.connector
+import psycopg
 from fastapi import HTTPException
 
 from .config import SEB_BASE_URL
@@ -45,8 +45,8 @@ def candidate_assessments(user_id: int) -> dict:
                    LEFT JOIN assessment_exam_sessions s ON s.invitation_id = i.id AND s.candidate_user_id = u.id
                    LEFT JOIN assessment_result_publications p ON p.assessment_id=a.id AND p.is_legacy=FALSE
                    LEFT JOIN assessment_publication_results pr ON pr.publication_id=p.id AND pr.invitation_id=i.id AND pr.candidate_user_id=u.id
-                   WHERE i.delivery_status = 'sent' AND NOT EXISTS(SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id=a.id AND rp.review_days IS NOT NULL AND DATE_ADD(a.ends_at,INTERVAL rp.review_days DAY)<=UTC_TIMESTAMP())
-                     AND (i.candidate_user_id = u.id OR (i.candidate_user_id IS NULL AND i.candidate_email COLLATE utf8mb4_unicode_ci = u.email))
+                   WHERE i.delivery_status = 'sent' AND NOT EXISTS(SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id=a.id AND rp.review_days IS NOT NULL AND (a.ends_at + rp.review_days * INTERVAL '1 day')<=(statement_timestamp() AT TIME ZONE 'UTC'))
+                     AND (i.candidate_user_id = u.id OR (i.candidate_user_id IS NULL AND i.candidate_email = u.email))
                    ORDER BY a.starts_at DESC, i.id DESC""",
                 (user_id,),
             )
@@ -101,6 +101,6 @@ def candidate_assessments(user_id: int) -> dict:
                 })
             connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Candidate assessments are temporarily unavailable") from exc
     return {"assessments": result}

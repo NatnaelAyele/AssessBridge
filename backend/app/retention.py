@@ -62,9 +62,9 @@ def read(user):
     company=admin(user)
     with database() as db:
         c=db.cursor(dictionary=True);policy=company_policy(c,company)
-        c.execute('SELECT revision,actor_name,reason,before_json,after_json,created_at FROM company_retention_changes WHERE company_id=%s AND (expires_at IS NULL OR expires_at>UTC_TIMESTAMP()) ORDER BY id DESC LIMIT 20',(company,));history=c.fetchall()
+        c.execute("SELECT revision,actor_name,reason,before_json,after_json,created_at FROM company_retention_changes WHERE company_id=%s AND (expires_at IS NULL OR expires_at>(statement_timestamp() AT TIME ZONE 'UTC')) ORDER BY id DESC LIMIT 20",(company,));history=c.fetchall()
         for row in history:row['before']=unpack(row.pop('before_json'));row['after']=unpack(row.pop('after_json'));row['created_at']=iso(row['created_at'])
-        c.execute('SELECT assessment_id,closed_at,case_removed_at,expires_at,JSON_LENGTH(events_json) AS event_count FROM retained_assessment_audits WHERE company_id=%s AND (expires_at IS NULL OR expires_at>UTC_TIMESTAMP()) ORDER BY case_removed_at DESC LIMIT 20',(company,));archives=c.fetchall()
+        c.execute("SELECT assessment_id,closed_at,case_removed_at,expires_at,jsonb_array_length(events_json) AS event_count FROM retained_assessment_audits WHERE company_id=%s AND (expires_at IS NULL OR expires_at>(statement_timestamp() AT TIME ZONE 'UTC')) ORDER BY case_removed_at DESC LIMIT 20",(company,));archives=c.fetchall()
         for row in archives:
             for key in ('closed_at','case_removed_at','expires_at'):row[key]=iso(row[key])
     return {'policy':policy,'history':history,'archives':archives,'applies_to':'new_assessments'}
@@ -84,9 +84,9 @@ def save(user,payload):
         after={key:getattr(payload,key) for key in KEYS}
         if all(before[key]==after[key] for key in KEYS):return {'saved':True,'unchanged':True}
         after['revision']=before['revision']+1
-        c.execute('INSERT INTO company_retention_policies(company_id,revision,identity_days,monitoring_days,review_days,audit_days) VALUES(%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE revision=VALUES(revision),identity_days=VALUES(identity_days),monitoring_days=VALUES(monitoring_days),review_days=VALUES(review_days),audit_days=VALUES(audit_days)',(company,after['revision'],*[after[key] for key in KEYS]))
+        c.execute('INSERT INTO company_retention_policies(company_id,revision,identity_days,monitoring_days,review_days,audit_days) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT (company_id) DO UPDATE SET  revision=EXCLUDED.revision,identity_days=EXCLUDED.identity_days,monitoring_days=EXCLUDED.monitoring_days,review_days=EXCLUDED.review_days,audit_days=EXCLUDED.audit_days',(company,after['revision'],*[after[key] for key in KEYS]))
         c.execute("SELECT COALESCE(NULLIF(full_name,''),email,username) AS name FROM users WHERE id=%s",(user,));name=c.fetchone()['name']
-        c.execute('INSERT INTO company_retention_changes(company_id,revision,request_key,payload_hash,actor_id,actor_name,reason,before_json,after_json,created_at,expires_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',(company,after['revision'],str(payload.request_key),digest,user,name,payload.reason,json.dumps(before),json.dumps(after),now(),now()+timedelta(days=after['audit_days']) if after['audit_days'] else None));db.commit()
+        c.execute('INSERT INTO company_retention_changes(company_id,revision,request_key,payload_hash,actor_id,actor_name,reason,before_json,after_json,created_at,expires_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',(company,after['revision'],str(payload.request_key),digest,user,name,payload.reason,json.dumps(before),json.dumps(after),now(),now()+timedelta(days=after['audit_days']) if after['audit_days'] else None));db.commit()
     return {'saved':True,'revision':after['revision']}
 
 def _audit_metadata(cursor,assessment):
@@ -116,11 +116,11 @@ def cleanup_cases(limit=25):
     count=0;failed=0
     with database() as db:
         c=db.cursor(dictionary=True)
-        c.execute('SELECT a.id FROM assessments a JOIN assessment_retention_policies p ON p.assessment_id=a.id WHERE p.review_days IS NOT NULL AND a.company_id IS NOT NULL AND DATE_ADD(a.ends_at,INTERVAL p.review_days DAY)<=UTC_TIMESTAMP() ORDER BY p.cleanup_attempt_at,a.id LIMIT %s',(limit,));ids=[row['id'] for row in c.fetchall()]
+        c.execute("SELECT a.id FROM assessments a JOIN assessment_retention_policies p ON p.assessment_id=a.id WHERE p.review_days IS NOT NULL AND a.company_id IS NOT NULL AND (a.ends_at + p.review_days * INTERVAL '1 day')<=(statement_timestamp() AT TIME ZONE 'UTC') ORDER BY p.cleanup_attempt_at NULLS FIRST,a.id LIMIT %s",(limit,));ids=[row['id'] for row in c.fetchall()]
         db.commit()
         for assessment in ids:
             try:
-                c.execute('SELECT a.id,a.company_id,a.ends_at,p.review_days,p.audit_days FROM assessments a JOIN assessment_retention_policies p ON p.assessment_id=a.id WHERE a.id=%s AND p.review_days IS NOT NULL AND DATE_ADD(a.ends_at,INTERVAL p.review_days DAY)<=UTC_TIMESTAMP() FOR UPDATE',(assessment,));exam=c.fetchone()
+                c.execute("SELECT a.id,a.company_id,a.ends_at,p.review_days,p.audit_days FROM assessments a JOIN assessment_retention_policies p ON p.assessment_id=a.id WHERE a.id=%s AND p.review_days IS NOT NULL AND (a.ends_at + p.review_days * INTERVAL '1 day')<=(statement_timestamp() AT TIME ZONE 'UTC') FOR UPDATE",(assessment,));exam=c.fetchone()
                 if not exam:db.rollback();continue
                 c.execute('SELECT id FROM assessment_exam_sessions WHERE invitation_id IN (SELECT id FROM assessment_invitations WHERE assessment_id=%s) AND submitted_at IS NULL AND disqualified_at IS NULL AND interrupted_at IS NULL',(assessment,))
                 if c.fetchall():db.rollback();continue
@@ -131,15 +131,15 @@ def cleanup_cases(limit=25):
                 c.execute('DELETE FROM assessments WHERE id=%s',(assessment,));db.commit();count+=1
             except Exception:
                 db.rollback();failed+=1
-                c.execute('UPDATE assessment_retention_policies SET cleanup_attempt_at=UTC_TIMESTAMP() WHERE assessment_id=%s',(assessment,));db.commit()
+                c.execute("UPDATE assessment_retention_policies SET cleanup_attempt_at=(statement_timestamp() AT TIME ZONE 'UTC') WHERE assessment_id=%s",(assessment,));db.commit()
                 logging.getLogger(__name__).exception('Case retention cleanup failed for assessment %s',assessment)
-        c.execute('DELETE FROM retained_assessment_audits WHERE expires_at<=UTC_TIMESTAMP()');audit_count=c.rowcount
-        c.execute('DELETE FROM company_retention_changes WHERE expires_at<=UTC_TIMESTAMP()');db.commit()
+        c.execute("DELETE FROM retained_assessment_audits WHERE expires_at<=(statement_timestamp() AT TIME ZONE 'UTC')");audit_count=c.rowcount
+        c.execute("DELETE FROM company_retention_changes WHERE expires_at<=(statement_timestamp() AT TIME ZONE 'UTC')");db.commit()
     return {'cases_removed':count,'cases_failed':failed,'audit_archives_removed':audit_count}
 
 
 def live_sql(alias='a'):
-    return f"NOT EXISTS (SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id={alias}.id AND rp.review_days IS NOT NULL AND DATE_ADD({alias}.ends_at,INTERVAL rp.review_days DAY)<=UTC_TIMESTAMP())"
+    return f"NOT EXISTS (SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id={alias}.id AND rp.review_days IS NOT NULL AND ({alias}.ends_at + rp.review_days * INTERVAL '1 day')<=(statement_timestamp() AT TIME ZONE 'UTC'))"
 
 def require_live(cursor,assessment):
     cursor.execute('SELECT a.id FROM assessments a WHERE a.id=%s AND '+live_sql(),(assessment,))
@@ -153,7 +153,7 @@ def notice(invitation):
 def archive(user,assessment):
     company=admin(user)
     with database() as db:
-        c=db.cursor(dictionary=True);c.execute('SELECT assessment_id,closed_at,case_removed_at,expires_at,events_json FROM retained_assessment_audits WHERE assessment_id=%s AND company_id=%s AND (expires_at IS NULL OR expires_at>UTC_TIMESTAMP())',(assessment,company));row=c.fetchone()
+        c=db.cursor(dictionary=True);c.execute("SELECT assessment_id,closed_at,case_removed_at,expires_at,events_json FROM retained_assessment_audits WHERE assessment_id=%s AND company_id=%s AND (expires_at IS NULL OR expires_at>(statement_timestamp() AT TIME ZONE 'UTC'))",(assessment,company));row=c.fetchone()
     if not row:raise HTTPException(404,'Retained audit metadata not found')
     row['events']=unpack(row.pop('events_json'))
     for key in ('closed_at','case_removed_at','expires_at'):row[key]=iso(row[key])
@@ -165,7 +165,7 @@ def cleanup_security_logs():
     with database() as db:
         c=db.cursor()
         for table in ('auth_audit','company_account_events'):
-            c.execute(f'DELETE FROM {table} WHERE expires_at<=UTC_TIMESTAMP()')
+            c.execute(f"DELETE FROM {table} WHERE expires_at<=(statement_timestamp() AT TIME ZONE 'UTC')")
             counts[table]=c.rowcount
         db.commit()
     return counts

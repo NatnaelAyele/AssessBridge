@@ -5,7 +5,7 @@ import secrets
 import smtplib
 from datetime import datetime, timedelta, timezone
 
-import mysql.connector
+import psycopg
 from fastapi import HTTPException
 
 from .db import database
@@ -40,7 +40,7 @@ def register_candidate(username: str | None, email: str, password: str) -> dict:
         with database() as connection:
             cursor = connection.cursor()
             cursor.execute(
-                "INSERT INTO users (username, email, password_hash, role, is_active) VALUES (%s, %s, %s, 'candidate', FALSE)",
+                "INSERT INTO users (username, email, password_hash, role, is_active) VALUES (%s, %s, %s, 'candidate', FALSE) RETURNING id",
                 (account_name, email, hash_password(password)),
             )
             user_id = cursor.lastrowid
@@ -51,9 +51,9 @@ def register_candidate(username: str | None, email: str, password: str) -> dict:
             send_verification_email(settings=settings, email=email, username=email, token=token)
             connection.commit()
             cursor.close()
-    except mysql.connector.IntegrityError as exc:
+    except psycopg.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="This email is already registered") from exc
-    except (mysql.connector.Error, OSError, smtplib.SMTPException) as exc:
+    except (psycopg.Error, OSError, smtplib.SMTPException) as exc:
         raise HTTPException(status_code=503, detail="Registration is temporarily unavailable; no account was created") from exc
     return {"message": "Check your email for a verification link before signing in"}
 
@@ -65,7 +65,7 @@ def verify_candidate_email(token: str) -> dict:
             cursor = connection.cursor(dictionary=True)
             cursor.execute(
                 """SELECT user_id FROM candidate_email_verifications
-                   WHERE token_hash = %s AND expires_at > UTC_TIMESTAMP() FOR UPDATE""",
+                   WHERE token_hash = %s AND expires_at > (statement_timestamp() AT TIME ZONE 'UTC') FOR UPDATE""",
                 (digest,),
             )
             row = cursor.fetchone()
@@ -75,7 +75,7 @@ def verify_candidate_email(token: str) -> dict:
             cursor.execute("DELETE FROM candidate_email_verifications WHERE user_id = %s", (row["user_id"],))
             connection.commit()
             cursor.close()
-    except mysql.connector.Error as exc:
+    except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="Verification is temporarily unavailable") from exc
     return {"verified": True}
 
@@ -106,6 +106,6 @@ def resend_verification(username: str, password: str) -> dict:
             send_verification_email(settings=settings, email=user["email"], username=user["email"], token=token)
             connection.commit()
             cursor.close()
-    except (mysql.connector.Error, OSError, smtplib.SMTPException) as exc:
+    except (psycopg.Error, OSError, smtplib.SMTPException) as exc:
         raise HTTPException(status_code=503, detail="Could not send verification email") from exc
     return {"message": "A new verification link was sent"}
