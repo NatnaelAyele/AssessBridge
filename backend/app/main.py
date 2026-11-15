@@ -856,6 +856,15 @@ def get_session_review(assessment_id: int, invitation_id: int, request: Request,
     return session_report(assessment_id, invitation_id, user.id, request.client.host if request.client else None)
 
 
+@app.get("/api/employer/assessments/{assessment_id}/invitations/{invitation_id}/review/readiness")
+def get_review_readiness(assessment_id: int, invitation_id: int, request: Request,
+                         response: Response, user: UserInfo = Depends(current_user)):
+    require_role(Role.employer_personnel, request, user)
+    response.headers["Cache-Control"] = "no-store"
+    from .reviews import decision_readiness
+    return decision_readiness(assessment_id, invitation_id, user.id)
+
+
 @app.post("/api/employer/assessments/{assessment_id}/invitations/{invitation_id}/review/decisions")
 def post_review_decision(assessment_id: int, invitation_id: int, payload: ReviewRequest, request: Request, user: UserInfo = Depends(current_user)):
     require_role(Role.employer_personnel, request, user)

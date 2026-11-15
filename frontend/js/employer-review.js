@@ -21,6 +21,7 @@ window.employerReview = (() => {
   let openedInvitationId = null;
   let sessionReadOnly = false;
   let loading = 0, cardLoading = 0, busy = false, dirty = false, stale = false;
+  let analysisTimer = null, analysisController = null, analysisWasPending = false, analysisEvidenceChanged = false;
   const findingDrafts = new Map();
   const connectivityDrafts = new Map();
   const pendingWrites = new Map();
@@ -32,6 +33,7 @@ window.employerReview = (() => {
   }
   function notifySaved(scope, text) { if (reviewVisible) scope.notify({ id: 'saved', text }); }
   function deactivate() {
+    stopAnalysisPolling();
     resultController?.destroy(); resultController = null; resultOwner = null;
     el('review-case-history')?._casework?.();
     reviewVisible = false; ++activationSerial; ++cardLoading;
@@ -43,6 +45,7 @@ window.employerReview = (() => {
   const cardMessages = feedback.scope('review-cards');
   let fieldSequence = 0;
   function resetMessages() {
+    stopAnalysisPolling(); analysisWasPending = false; analysisEvidenceChanged = false;
     el('review-case-history')?._casework?.();
     pendingWrites.clear();
     sessionMessages.dispose(); sessionMessages = feedback.scope('review-session');
@@ -282,7 +285,7 @@ window.employerReview = (() => {
     if (busy) return;
     if (sessionReadOnly) closeReadOnlyReport();
     if (tab !== "review") pauseMedia();
-    if (report) { if (tab === "results") renderResults(); return; }
+    if (report) { if (tab === "results") renderResults(); syncAnalysisState(); return; }
     message(tab === 'results' ? 'results-message' : 'review-exam-load-message', 'Loading assessments...');
     try { await initialize(true, token); if (token === activationSerial) message('review-exam-load-message'); }
     catch (error) { if (token !== activationSerial) return; message(tab === "results" ? "results-message" : "review-exam-load-message", error.message, true, 0, { label: "Retry", onClick: () => activate(tab) }); }
@@ -335,11 +338,11 @@ window.employerReview = (() => {
     resultController = AssessBridgeReporting.mount({ variant: 'reviewer', table: el('review-results-table'), host: el('results-report-controls'), pagerHost: el('results-report-pagination'), feedback, count: el('results-count'), assessment: owner,
       base: `/api/employer/assessments/${owner}`, pdfBase: id => `/api/employer/assessments/${owner}/invitations/${id}/exports/audit.pdf`, onView: id => openSession(id, false, true) });
   }
-  async function monitoringReport(url) {
-    const result = await api(url); const events = [...result.events]; let after = result.next_after_id;
+  async function monitoringReport(url, options = {}) {
+    const result = await api(url, options); const events = [...result.events]; let after = result.next_after_id;
     while (result.events.length && events.length % 500 === 0 && after) {
       const nextUrl = new URL(url, location.origin); nextUrl.searchParams.set("after_id", after);
-      const next = await api(nextUrl.pathname + nextUrl.search);
+      const next = await api(nextUrl.pathname + nextUrl.search, options);
       if (!next.events.length) break;
       events.push(...next.events); after = next.next_after_id;
       if (next.events.length < 500) break;
@@ -386,6 +389,9 @@ window.employerReview = (() => {
     }
     for (const pane of document.querySelectorAll("[data-review-pane]")) pane.hidden = pane.dataset.reviewPane !== tab;
     if (tab !== "integrity") pauseMedia();
+    if (tab === 'integrity' && analysisEvidenceChanged) {
+      analysisEvidenceChanged = false; renderEvents(); renderFindingHistory();
+    }
     if(report&&tab==='history'){
       const options={base:base()+'/review',feedback:employerFeedback,canOpenReference:ref=>['observation','interruption'].includes(ref.kind),onReference:ref=>{if(ref.kind==='observation'){selectTab('integrity');const event=monitoring.events.find(e=>e.event_key===ref.key);const article=event&&el('review-event-'+event.id);if(article){article.scrollIntoView({block:'center'});article.querySelector('.review-play-observation')?.click();}}else if(ref.kind==='interruption')selectTab('connectivity');}};
       AssessBridgeCasework.mountHistory(el('review-case-history'),options);
@@ -415,13 +421,19 @@ window.employerReview = (() => {
     const showConcern=(id,value,title)=>{sessionMessages.clear(id);if(value)sessionMessages.show({id,target:el(id),tone:'warning',text:`${title}: ${value.reason}\nRecorded by ${value.actor_name} / ${date(value.created_at)}`});};
     showConcern('review-audit-concern',report.audit_concern,'Audit needs attention');showConcern('review-assessment-hold',report.publication_hold,'Publication on hold');
     renderCoverage(); renderHistory(); renderQuestions(); renderEvents(); renderFindingHistory(); renderRecording(); renderConnectivity();
-    el("review-policy-lock").hidden = !report.system_disqualification_locked;
-    el("review-decision-state").textContent = report.decision ? `${titles[report.decision.action]} · ${date(report.decision.created_at)}` : "No disposition recorded.";
+    renderDecisionStatus();
     el("review-reviewer").textContent = el("account-name").textContent;
     el("review-action").value = ""; el("review-score").value = ""; el("review-score").max = report.scores.possible;
     el("review-reason").value = "";
-    for (const option of el("review-action").options) option.disabled = report.system_disqualification_locked && ["keep_score", "change_score"].includes(option.value);
     actionChanged();
+  }
+  function renderDecisionStatus() {
+    el('review-policy-lock').hidden = !report.system_disqualification_locked;
+    el('review-decision-state').textContent = report.decision
+      ? `${titles[report.decision.action]} · ${date(report.decision.created_at)}` : 'No disposition recorded.';
+    for (const option of el('review-action').options) {
+      option.disabled = report.system_disqualification_locked && ['keep_score', 'change_score'].includes(option.value);
+    }
   }
   function updateTimeUsed() {
     if (!report?.started_at) return;
@@ -897,6 +909,105 @@ window.employerReview = (() => {
     el("review-submit").disabled = !report?.can_decide || busy || stale;
     el("review-action").disabled = !report?.can_decide || busy || stale;
     el("review-reason").disabled = !report?.can_decide || busy || stale;
+    el("review-score").disabled = el("review-action").value !== 'change_score' || !report?.can_decide || busy || stale;
+    syncAnalysisState();
+  }
+
+  function awaitingAnalysis() {
+    return !!report && !report.published && !sessionReadOnly && !report.can_decide &&
+      ['Recording upload pending', 'Recording analysis pending'].includes(report.decision_blocked_reason);
+  }
+  function stopAnalysisPolling() {
+    clearTimeout(analysisTimer); analysisTimer = null;
+    analysisController?.abort(); analysisController = null;
+  }
+  function reviewSessionVisible() {
+    return reviewVisible && !el('review-session').hidden && !el('review-session').closest('[data-panel]')?.hidden;
+  }
+  function scheduleAnalysisCheck(delay = 3000) {
+    clearTimeout(analysisTimer);
+    analysisTimer = window.setTimeout(checkAnalysis, delay);
+  }
+  function syncAnalysisState() {
+    const pending = awaitingAnalysis();
+    if (pending) analysisWasPending = true;
+    const completed = !!report?.ended_at && monitoring?.status === 'analysed';
+    const incomplete = !!report && analysisWasPending && !pending && report.can_decide && !completed;
+    const status = el('review-analysis-status'), content = el('review-decision-content');
+    el('review-decision-panel').classList.toggle('is-analysis-pending', pending);
+    content.inert = pending; content.setAttribute('aria-busy', String(pending));
+    status.hidden = !pending && !completed && !incomplete;
+    status.classList.toggle('is-complete', !pending && completed);
+    status.classList.toggle('is-incomplete', incomplete);
+    status.querySelector('.review-analysis-icon').textContent = pending ? '' : completed ? '\u2713' : '!';
+    el('review-analysis-label').textContent = pending ? 'Analysis pending' : completed ? 'Analysis completed' : 'Analysis incomplete';
+    el('review-analysis-hint').hidden = !pending;
+    if (pending && reviewSessionVisible()) {
+      if (!analysisTimer && !analysisController) scheduleAnalysisCheck();
+    } else stopAnalysisPolling();
+  }
+  async function checkAnalysis() {
+    analysisTimer = null;
+    if (!awaitingAnalysis() || !reviewSessionVisible() || busy || reviewDialog) {
+      if (awaitingAnalysis() && reviewSessionVisible()) scheduleAnalysisCheck();
+      return;
+    }
+    const serial = loading, url = base(), controller = new AbortController();
+    analysisController = controller;
+    const current = () => serial === loading && analysisController === controller && reviewSessionVisible();
+    try {
+      const state = await api(`${url}/review/readiness`, { signal: controller.signal });
+      if (!current() || busy || reviewDialog) return;
+      sessionMessages.clear('review-analysis-message');
+      if (['Recording upload pending', 'Recording analysis pending'].includes(state.blocked_reason) && !state.published) return;
+      const [detail, mon, media] = await Promise.all([
+        api(`${url}/review`, { signal: controller.signal }),
+        monitoringReport(`${url}/monitoring?limit=500`, { signal: controller.signal }),
+        api(`${url}/recording`, { signal: controller.signal }).catch(error => {
+          if (error.status === 404) return { parts: [], status: 'unavailable' };
+          throw error;
+        }),
+      ]);
+      if (!current() || busy || reviewDialog) return;
+      if (mon.status === 'processing' && !detail.published) {
+        detail.can_decide = false; detail.decision_blocked_reason = 'Recording analysis pending';
+      }
+      const changed = detail.revision !== report.revision;
+      report = detail; monitoring = mon; recording = media;
+      setSessionMode(sessionReadOnly); renderCoverage(); renderDecisionStatus(); renderRecording();
+      // Keep existing grades, reasons, and playback in place during an automatic update.
+      for (const input of document.querySelectorAll('[data-grade-index],[data-grade-reason]')) {
+        input.disabled = !report.can_decide || report.system_disqualification_locked || stale || changed;
+      }
+      if (changed) {
+        stale = true;
+        message('review-decision-message', 'This report changed. Reload it before saving.', true, 0,
+          { label: 'Reload report', onClick: refreshReport });
+      }
+      analysisEvidenceChanged = true;
+      if (!inlinePlayback && !document.activeElement?.closest('.review-finding-form')) {
+        analysisEvidenceChanged = false; renderEvents(); renderFindingHistory();
+      }
+      renderHistory(); updateDecisionDisabled(); draftScore();
+    } catch (error) {
+      if (current() && !controller.signal.aborted) {
+        if (error.status === 401) {
+          message('review-analysis-message', 'Your session expired. Sign in again.', true, 0,
+            { label: 'Sign in', onClick: () => location.assign('/') });
+          stopAnalysisPolling();
+        } else if ([403, 404].includes(error.status)) {
+          message('review-analysis-message', 'This case is no longer available.', true, 0,
+            { label: 'Reload report', onClick: refreshReport });
+          stopAnalysisPolling();
+        } else message('review-analysis-message', 'Could not check analysis. Retrying...', true, 0,
+          { label: 'Retry now', onClick: () => scheduleAnalysisCheck(0) });
+      }
+    } finally {
+      if (analysisController === controller) {
+        analysisController = null;
+        if (awaitingAnalysis() && reviewSessionVisible()) scheduleAnalysisCheck();
+      }
+    }
   }
   function collectGrades(requireComplete) {
     const result = [];

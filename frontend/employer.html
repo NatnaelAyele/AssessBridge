@@ -12,8 +12,8 @@
     <link rel="stylesheet" href="/css/reporting.css?v=20261114-refined" />
     <script src="/js/reporting.js?v=20261114-refined" defer></script>
     <script src="/js/casework.js?v=20261115-review-sections" defer></script>
-    <script src="js/employer-review.js?v=20261115-review-sections" defer></script>
-    <link rel="stylesheet" href="css/employer-review.css?v=20261114-readiness" />
+    <script src="js/employer-review.js?v=20261115-analysis-state" defer></script>
+    <link rel="stylesheet" href="css/employer-review.css?v=20261115-analysis-state" />
     <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/personnel.css?v=20261113-roster-removal" />
     <link rel="stylesheet" href="/css/workspace-sidebar.css?v=20261113-blue" />
@@ -281,6 +281,13 @@
                   </section>
                 </div>
                 <aside id="review-decision-panel" class="card review-decision-panel" aria-label="Review decision">
+                  <div id="review-analysis-status" class="review-analysis-status" role="status" aria-live="polite" hidden>
+                    <span class="review-analysis-icon" aria-hidden="true"></span>
+                    <strong id="review-analysis-label">Analysis pending</strong>
+                    <p id="review-analysis-hint">Review will unlock automatically.</p>
+                    <div id="review-analysis-message" class="editor-feedback-host"></div>
+                  </div>
+                  <div id="review-decision-content">
                   <h3>Review decision</h3><p id="review-decision-state"></p>
                   <p id="review-policy-lock" class="review-alert" hidden>This system disqualification is final.</p>
                   <form id="review-decision-form" novalidate>
@@ -291,6 +298,7 @@
                     <div id="review-decision-message" class="editor-feedback-host"></div>
                     <button id="review-submit" class="primary-button" type="submit">Confirm decision</button>
                   </form>
+                  </div>
                 </aside>
               </div>
             </div>

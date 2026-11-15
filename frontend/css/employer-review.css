@@ -44,6 +44,21 @@
 .review-tabs { flex-wrap: wrap; }
 .review-tabs button { min-width: 120px; }
 .review-decision-panel { position: sticky; top: 20px; padding: 22px; }
+.review-decision-panel.is-analysis-pending #review-decision-content { filter: blur(3px); opacity: .45; pointer-events: none; user-select: none; }
+.review-analysis-status[hidden] { display: none; }
+.review-analysis-status { display: grid; justify-items: center; align-content: center; gap: 12px; padding: 24px; text-align: center; }
+.is-analysis-pending .review-analysis-status { position: absolute; inset: 0; z-index: 2; border-radius: inherit; background: rgba(245,249,255,.83); color: #134d8f; }
+.review-analysis-status strong { font-size: 17px; line-height: 1.4; }
+.review-analysis-status p { margin: 0; color: #3d5878; font-size: 13px; }
+.review-analysis-status .editor-feedback-host:empty { display: none; }
+.review-analysis-icon { width: 28px; height: 28px; border: 3px solid #d4e4f7; border-top-color: #125cb1; border-radius: 50%; animation: review-analysis-spin 1s linear infinite; }
+.review-analysis-status.is-complete { grid-template-columns: auto 1fr; justify-items: start; gap: 9px; margin-bottom: 18px; padding: 12px; border: 1px solid #b6dec7; border-radius: 9px; background: #edf9f1; color: #15613a; text-align: left; }
+.review-analysis-status.is-complete strong { font-size: 13px; }
+.review-analysis-status.is-complete .review-analysis-icon { display: grid; place-items: center; width: 22px; height: 22px; border: 0; background: #d4efdf; color: #15613a; font-size: 15px; animation: none; }
+.review-analysis-status.is-incomplete { position: static; margin-bottom: 18px; padding: 12px; border: 1px solid #edc0c0; border-radius: 9px; background: #fff3f3; color: #9c2929; }
+.review-analysis-status.is-incomplete .review-analysis-icon { border: 0; animation: none; font-weight: 700; }
+@keyframes review-analysis-spin { to { transform: rotate(360deg); } }
+@media(prefers-reduced-motion: reduce) { .review-analysis-icon { animation: none; } }
 .review-decision-panel h3 { font-size: 18px; margin-bottom: 12px; }
 .review-decision-panel form { display: grid; gap: 16px; }
 .review-decision-panel p { font-size: 12px; line-height: 1.6; }
@@ -176,7 +191,7 @@
 .results-action { text-align: right; white-space: nowrap; }
 .results-action .secondary-button { min-height: 36px; padding: 8px 12px; }
 .review-layout.is-read-only { grid-template-columns: minmax(0,1fr); }
-@media(max-width:1150px) { .review-toolbar { grid-template-columns: repeat(2,minmax(0,1fr)); } .review-candidate-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .review-layout { grid-template-columns: minmax(0,1fr); } .review-decision-panel { position: static; } }
+@media(max-width:1150px) { .review-toolbar { grid-template-columns: repeat(2,minmax(0,1fr)); } .review-candidate-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .review-layout { grid-template-columns: minmax(0,1fr); } .review-decision-panel { position: relative; top: auto; } }
 @media(max-width:600px) { .review-candidate-grid,.review-toolbar,.review-facts,.review-session-identities,.review-finding-form { grid-template-columns: minmax(0,1fr); } .review-exam-item { grid-template-columns: minmax(0,1fr) auto; gap: 8px 10px; } .review-exam-item strong { grid-column: 1 / -1; } .review-exam-window { grid-column: 2; grid-row: 2; justify-self: end; } .review-session-head { flex-direction: column; } .review-tabs button { font-size: 11px; padding: 10px 3px; } .review-event-heading { align-items: start; flex-direction: column; } .review-player-time { order: 4; width: 100%; margin-left: 0; } .review-evidence .review-full-player video { min-height: 240px; object-fit: contain; object-position: center top; } .review-player-integrated .review-player-buttons { display: grid; grid-template-columns: 36px 36px minmax(42px,1fr) auto; gap: 2px 5px; } .review-player-integrated .review-player-time { order: 0; width: auto; justify-self: end; font-size: 11px; } .review-player-integrated .review-player-volume { width: min(100%,64px); } .review-player-integrated .review-player-speed { margin-left: 0; } }
 @media(max-width:600px) { .review-exam-item .review-exam-invited { grid-column: 1 / -1; justify-self: start; } .review-player-integrated .review-player-buttons { grid-template-columns: 42px 42px minmax(42px,1fr) auto; } .review-player-integrated button { padding: 4px 2px; } }
 @media(max-width:600px) { .review-event-top { flex-direction: column; } .review-event-time { align-self: start; } .review-finding-summary { padding: 14px; } }
