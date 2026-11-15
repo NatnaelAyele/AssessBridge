@@ -10,7 +10,7 @@ import onnxruntime as ort
 
 from ..identity import MODEL_DIR, _face_models, _model_lock
 
-MODEL_VERSION = "yunet-2023mar+sface-2021dec+yolox-s-0.1.1+rtdetr-r18-o365v2+silero-066409f+policy2"
+MODEL_VERSION = "yunet-2023mar+sface-2021dec+yolox-s-0.1.1+rtdetr-r18-o365v2+silero-066409f+policy2.2"
 PROHIBITED_OBJECTS = {"Mobile phone": "mobile_phone", "Books": "book", "Tablet": "tablet", "Calculator": "calculator"}
 OBJECTS365_CLASSES = {243: "tablet", 316: "calculator"}
 
