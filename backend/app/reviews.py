@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .db import database
+from .audit_times import iso
 from .connectivity import evidence_pending, ended_at
 from .exam_sessions import finalize_if_expired
 from .identity import _identity_key
@@ -20,10 +21,6 @@ from .connectivity_review import load_incidents
 
 def now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def iso(value):
-    return value.isoformat() + "Z" if value else None
 
 
 def unpack(value):
@@ -94,7 +91,7 @@ class ConnectivityFindingRequest(BaseModel):
 
 def _load(cursor, assessment_id, invitation_id, employer_id):
     # Share the exam lock with publication before taking session locks.
-    cursor.execute("SELECT id FROM assessments WHERE id=%s AND employer_user_id=%s FOR UPDATE", (assessment_id, employer_id))
+    cursor.execute("SELECT id FROM assessments WHERE id=%s AND company_id = (SELECT company_id FROM users WHERE id=%s) FOR UPDATE", (assessment_id, employer_id))
     if not cursor.fetchone():
         raise HTTPException(404, "Candidate session not found")
     cursor.execute(
@@ -102,7 +99,7 @@ def _load(cursor, assessment_id, invitation_id, employer_id):
                   a.duration_minutes,a.starts_at,a.ends_at,a.rules_text
            FROM assessments a JOIN assessment_invitations i ON i.assessment_id=a.id
            JOIN assessment_exam_sessions s ON s.invitation_id=i.id
-           WHERE a.id=%s AND i.id=%s AND a.employer_user_id=%s FOR UPDATE""",
+           WHERE a.id=%s AND i.id=%s AND a.company_id = (SELECT company_id FROM users WHERE id=%s) FOR UPDATE""",
         (assessment_id, invitation_id, employer_id),
     )
     session = cursor.fetchone()
@@ -202,7 +199,7 @@ def session_report(assessment_id, invitation_id, employer_id, source_ip=None, ac
                              "event_snapshot": unpack(row["event_snapshot_json"]),
                              "reviewer": row["reviewer_username"], "reviewer_id": row["reviewer_user_id"],
                              "created_at": iso(row["created_at"])})
-        cursor.execute("SELECT status,stage,failure_reason,checked_at,attempts FROM assessment_identity_checks WHERE invitation_id=%s", (invitation_id,))
+        cursor.execute("SELECT status,stage,failure_reason,checked_at,attempts,verification_method FROM assessment_identity_checks WHERE invitation_id=%s", (invitation_id,))
         identity = cursor.fetchone()
         if identity:
             identity["checked_at"] = iso(identity["checked_at"])
@@ -217,12 +214,19 @@ def session_report(assessment_id, invitation_id, employer_id, source_ip=None, ac
                                   "finding": row["finding"], "reason": row["reason"], "reviewer": row["reviewer_username"],
                                   "reviewer_id": row["reviewer_user_id"], "created_at": iso(row["created_at"]),
                                   "incident_snapshot": unpack(row["incident_snapshot_json"])} for row in cursor.fetchall()]
+        from .casework import latest_outcome,latest_hold,public
+        outcome=latest_outcome(cursor,session["id"])
+        concern=public(outcome) if outcome and outcome["kind"]=="needs_attention" else None
+        hold=latest_hold(cursor,assessment_id)
+        publication_hold=public(hold) if hold and hold["kind"]=="held" else None
+        from .readiness import report as readiness_report
+        readiness = readiness_report(cursor, invitation_id)
         _audit(cursor, session["id"], actor_id or employer_id, "report", source_ip)
         connection.commit()
     system_locked = bool(session["disqualified_at"])
     ended = bool(ended_at(session))
     latest_json = _decision(latest)
-    return {"assessment_id": assessment_id, "invitation_id": invitation_id, "session_id": session["id"],
+    return {"readiness":readiness,"audit_concern":concern,"publication_hold":publication_hold,"assessment_id": assessment_id, "invitation_id": invitation_id, "session_id": session["id"],
             "title": session["title"], "name": session["candidate_name"], "email": session["candidate_email"],
             "attempt_state": "disqualified" if system_locked else "interrupted" if session.get("interrupted_at") else "submitted" if ended else "in_progress",
             "interruption_reason": session.get("interruption_reason"), "connectivity_events": connectivity,
@@ -396,7 +400,7 @@ def reference_photo(assessment_id, invitation_id, employer_id, source_ip):
 def candidate_cards(assessment_id, employer_id):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT id,title,questions_json FROM assessments WHERE id=%s AND employer_user_id=%s", (assessment_id, employer_id))
+        cursor.execute("SELECT id,title,questions_json FROM assessments WHERE id=%s AND company_id = (SELECT company_id FROM users WHERE id=%s)", (assessment_id, employer_id))
         assessment = cursor.fetchone()
         if not assessment:
             raise HTTPException(404, "Assessment not found")
@@ -404,7 +408,7 @@ def candidate_cards(assessment_id, employer_id):
         cursor.execute(
             """SELECT s.*,i.id AS invitation_id,i.candidate_name,i.candidate_email,i.delivery_status
                FROM assessment_invitations i LEFT JOIN assessment_exam_sessions s ON s.invitation_id=i.id
-               WHERE i.assessment_id=%s ORDER BY i.id FOR UPDATE""", (assessment_id,))
+               WHERE i.assessment_id=%s AND i.removed_at IS NULL ORDER BY i.id FOR UPDATE""", (assessment_id,))
         rows = cursor.fetchall()
         cards = []
         for row in rows:
@@ -421,7 +425,9 @@ def candidate_cards(assessment_id, employer_id):
             else:
                 scores = {"calculated_score": None, "possible": len(questions), "written_pending": 0}
             state = "disqualified" if row["disqualified_at"] else "interrupted" if row.get("interrupted_at") else "submitted" if row["submitted_at"] else "in_progress" if row["id"] else "not_started"
-            cards.append({"invitation_id": row["invitation_id"], "name": row["candidate_name"], "email": row["candidate_email"],
+            from .casework import latest_outcome
+            outcome=latest_outcome(cursor,row['id']) if row['id'] else None
+            cards.append({"audit_attention":bool(outcome and outcome['kind']=='needs_attention'),"invitation_id": row["invitation_id"], "name": row["candidate_name"], "email": row["candidate_email"],
                           "attempt_state": state, "has_session": bool(row["id"]), "invitation_state": row["delivery_status"],
                           "review_state": "reviewed" if latest else "awaiting_review" if state in {"submitted", "disqualified", "interrupted"} else "not_ready",
                           "outcome": "disqualified" if row["disqualified_at"] or (latest and latest["action"] == "disqualify") else "eligible" if latest else "awaiting_review",

@@ -54,6 +54,28 @@
       const cell = node("div", "connectivity-summary-fact"); cell.append(node("span", "", label), node("strong", "", value)); facts.append(cell);
     }
     summary.append(facts); host.append(summary);
+    const readiness = report.readiness;
+    if (readiness) {
+      const card=node('section','card section-card readiness-report');card.append(node('h3','','Pre-exam readiness'));
+      const latest=readiness.checks.at(-1);
+      if(!latest)card.append(node('p','review-muted','No readiness record available.'));
+      else {
+        card.append(node('p','',latest.passed?'Readiness confirmed':'Readiness incomplete'),node('p','review-muted',`Recorded ${date(latest.created_at)}`));
+        const labels={secure_context:'Secure connection',media_recorder:'Recording support',encrypted_storage:'Local storage',camera:'Camera',microphone:'Microphone',web_audio:'Audio support',supported_platform:'Supported platform',network:'Exam server connection',monitoring_consent:'Monitoring notice',identity:'Identity check'};
+        const list=node('dl','readiness-report-facts');
+        for(const [key,value]of Object.entries(latest.checks)){const item=node('div');item.append(node('dt','',labels[key]||key),node('dd','',value?'Passed':'Not passed'));list.append(item);}
+        const ackLabels={instructions:'Instructions and rules',room:'Room and device readiness',interruptions:'Interruption and exit rules'};
+        for(const [key,value]of Object.entries(latest.acknowledgements)){const item=node('div');item.append(node('dt','',ackLabels[key]),node('dd','',value?'Acknowledged':'Not acknowledged'));list.append(item);}
+        card.append(list,node('p','review-muted',`Platform reported by device: ${latest.platform}`));
+        card.append(node('p','',latest.seb_method==='not_required'?'SEB not required':'SEB configuration verified by server'));
+        if(latest.client_version)card.append(node('p','review-muted','SEB version reported by device: '+latest.client_version));
+      }
+      host.append(card);
+      const events=node('details','card section-card environment-report');events.append(node('summary','',`Page & device events (${readiness.events.length})`));
+      if(!readiness.events.length)events.append(node('p','review-muted','No page or device events recorded.'));
+      else for(const item of readiness.events){const row=node('article','environment-report-event');row.append(node('strong','',item.label),node('p','review-muted','Source: Browser page'),node('p','',`Device time: ${date(item.client_occurred_at)}`),node('p','review-muted',`Received by server: ${date(item.received_at)}`));events.append(row);}
+      host.append(events);
+    }
     if (!data.incidents.length && !data.confirmed_exits?.length) {
       host.append(node("p", "card section-card", "No interruptions recorded.")); return;
     }

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Company workspace | AssessBridge</title><link rel="stylesheet" href="/css/company.css?v=20261114-settings-ui"><link rel="stylesheet" href="/css/workspace-sidebar.css?v=20261113-blue" />
+    <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center"><script src="/js/ui-messages.js" defer></script><script src="/js/company.js?v=20261114-settings-ui" defer></script><script src="/js/company-retention.js?v=20261114-settings-ui" defer></script></head><body data-page="admin"><div class="admin-shell">
+<aside class="admin-sidebar"><a class="company-brand" href="/"><span class="brand-symbol" aria-hidden="true">A</span>AssessBridge</a><p class="workspace-label">COMPANY WORKSPACE</p><nav aria-label="Company navigation"><button class="nav-link is-active" data-view="staff" aria-current="page"><span aria-hidden="true">&#9638;</span>Staff</button><button class="nav-link" data-view="invitations"><span aria-hidden="true">&#9993;</span>Invitations <span id="pending-nav" class="nav-count">0</span></button><button class="nav-link" data-view="settings"><span aria-hidden="true">&#9881;</span>Company settings</button></nav><div class="sidebar-footer"><span class="admin-avatar">CA</span><div><strong>Company administrator</strong><span>Staff &amp; access management</span></div></div></aside>
+<div class="admin-workspace"><header class="admin-topbar"><span>Company administration</span><button id="logout" class="quiet-button" type="button">Sign out</button></header><main class="admin-main"><div class="page-heading"><div><p class="eyebrow">YOUR COMPANY</p><h1 id="title">Company administration</h1></div><button id="refresh" class="secondary-button">Refresh</button></div>
+<div id="notifications"></div><div id="message"></div>
+<div class="stats-row"><div class="stat"><span>Active staff</span><strong id="active-count">&mdash;</strong></div><div class="stat"><span>Pending invitations</span><strong id="pending-count">&mdash;</strong></div><div class="stat"><span>Administrators</span><strong id="admin-count">&mdash;</strong></div></div>
+<section data-pane="staff"><div class="staff-layout"><div class="surface"><div class="surface-heading"><div><h2>Staff directory</h2><p>Manage access to your company.</p></div></div><div class="filter-row"><label class="search-field"><span class="sr-only">Search staff</span><input id="staff-search" type="search" placeholder="Search by name or email"></label><label><span class="sr-only">Filter by role</span><select id="staff-role"><option value="">All roles</option><option value="company_admin">Administrators</option><option value="employer_personnel">Personnel</option><option value="auditor">Auditors</option></select></label></div><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody id="staff"></tbody></table></div><p id="staff-empty" class="empty-state" hidden>No staff match your search.</p></div>
+<aside class="surface invite-card"><div class="surface-heading"><div><span class="section-kicker">BUILD YOUR TEAM</span><h2>Invite staff</h2><p>Send an invitation to join your company.</p></div></div><form id="invite"><label>Full name<input name="name" required maxlength="160" placeholder="Enter full name" autocomplete="name"></label><label>Work email<input name="email" type="email" required placeholder="name@company.com" autocomplete="email"></label><label>Role<select name="role"><option value="employer_personnel">Employer personnel</option><option value="auditor">Auditor</option><option value="company_admin">Company administrator</option></select></label><button class="primary-button">Send invitation <span aria-hidden="true">&#8594;</span></button></form></aside></div></section>
+<section data-pane="invitations" hidden><div class="surface"><div class="surface-heading"><div><h2>Staff invitations</h2><p>Track invitations and manage pending access.</p></div></div><div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody id="invitations"></tbody></table></div><p id="invitations-empty" class="empty-state" hidden>No invitations yet.</p></div></section>
+<section data-pane="settings" class="company-settings" aria-label="Company settings" hidden>
+ <div class="surface settings-card" id="company-details-section">
+  <div class="surface-heading"><div><h2>Company profile</h2><p>The company name shown across your workspace.</p></div></div>
+  <form id="details"><label>Company name<input name="name" required maxlength="160" autocomplete="organization"></label><div id="company-details-feedback"></div><div class="form-actions"><button class="primary-button">Save company name</button></div></form>
+ </div>
+ <div class="surface retention-settings" aria-labelledby="retention-heading">
+  <div class="surface-heading"><div><h2 id="retention-heading">Data retention</h2><p>Choose when assessment data is automatically removed.</p></div><button id="retention-reload" class="secondary-button" type="button">Reload settings</button></div>
+  <div class="settings-policy-scope"><strong>New assessments only</strong><span>Existing assessments keep their saved retention periods.</span></div>
+  <div id="retention-feedback"></div>
+  <form id="retention-form" novalidate>
+   <fieldset id="retention-fields" disabled><legend class="sr-only">Retention periods</legend><div class="retention-grid">
+    <div class="retention-option">
+     <div class="retention-option-heading"><label for="retention-identity">Identity images</label><span class="retention-clock">From image capture</span></div>
+     <p id="retention-identity-help">ID card, selfie and verified reference image.</p>
+     <div class="retention-control"><span id="retention-identity-period" class="retention-input-label">Keep for</span><div class="retention-number"><input id="retention-identity" name="identity_days" type="number" min="1" max="3650" step="1" required aria-label="Identity image retention in days" aria-describedby="retention-identity-help"><span>days</span></div></div>
+    </div>
+    <div class="retention-option">
+     <div class="retention-option-heading"><label for="retention-monitoring">Session recordings</label><span class="retention-clock">From attempt end</span></div>
+     <p id="retention-monitoring-help">Video, audio and analysis samples.</p>
+     <div class="retention-control"><span class="retention-input-label">Keep for</span><div class="retention-number"><input id="retention-monitoring" name="monitoring_days" type="number" min="1" max="3650" step="1" required aria-describedby="retention-monitoring-help"><span>days</span></div></div>
+    </div>
+    <div class="retention-option">
+     <div class="retention-option-heading"><label for="retention-review">Case records</label><span class="retention-clock">From assessment close</span></div>
+     <p id="retention-review-help">Assessment content, candidate assignments, answers, scores, findings, notes and remaining evidence.</p>
+     <label class="retention-keep"><input id="retention-review-keep" type="checkbox" checked>No automatic expiry</label>
+     <div class="retention-control"><span class="retention-input-label">Remove after</span><div class="retention-number"><input id="retention-review" name="review_days" type="number" min="1" max="3650" step="1" disabled aria-describedby="retention-review-help"><span>days</span></div></div>
+    </div>
+    <div class="retention-option">
+     <div class="retention-option-heading"><label for="retention-audit">Audit records</label><span class="retention-clock">From assessment close</span></div>
+     <p id="retention-audit-help">Action types, account references and timestamps kept after case deletion. No scores, reasons or evidence.</p>
+     <label class="retention-keep"><input id="retention-audit-keep" type="checkbox" checked>No automatic expiry</label>
+     <div class="retention-control"><span class="retention-input-label">Remove after</span><div class="retention-number"><input id="retention-audit" name="audit_days" type="number" min="1" max="3650" step="1" disabled aria-describedby="retention-audit-help"><span>days</span></div></div>
+    </div>
+   </div></fieldset>
+   <div class="retention-guidance"><p>Case records must be kept at least as long as images and recordings. Audit records must be kept at least as long as case records.</p><p>Expired data is permanently removed. Downloaded files and backups are kept separately.</p></div>
+   <div class="form-actions"><span>Periods can be set from 1 to 3,650 days.</span><button id="retention-save" class="primary-button" type="submit" disabled>Save retention settings</button></div>
+  </form>
+ </div>
+ <details class="surface retention-settings settings-history-section" id="retention-changes-section">
+  <summary><span><strong>Settings change history</strong><small>Who changed retention periods, when and why.</small></span><span id="retention-history-count" class="settings-record-count"></span></summary>
+  <div id="retention-history" class="settings-history-content"></div>
+ </details>
+ <details class="surface retention-settings settings-history-section" id="retention-archive-section">
+  <summary><span><strong>Retained audit records</strong><small>Records that remain after an assessment case is deleted.</small></span><span id="retention-archive-count" class="settings-record-count"></span></summary>
+  <div id="retention-archives" class="settings-history-content"></div>
+ </details>
+</section>
+</main></div></div></body></html>

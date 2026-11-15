@@ -72,7 +72,8 @@ def serialize_state(cursor, exam: dict, session: dict | None, now: datetime) -> 
         "server_now": iso_utc(now),
     }
     if session is None:
-        return {**base, "state": "not_started"}
+        from .readiness import instructions_version
+        return {**base, "state": "not_started", "instructions_version": instructions_version(exam)}
 
     cursor.execute(
         "SELECT question_index, answer_json FROM assessment_exam_answers WHERE session_id = %s",
@@ -154,14 +155,20 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
                 )
                 if cursor.fetchone() is None:
                     raise HTTPException(status_code=403, detail="Agreement is required before starting")
+                from . import esignet
+                if exam['identity_policy'] == esignet.POLICY:
+                    esignet.require_enabled()
+                method = esignet.METHOD if exam['identity_policy'] == esignet.POLICY else 'card_face'
                 cursor.execute(
                     """SELECT 1 FROM assessment_identity_checks
                        WHERE invitation_id = %s AND candidate_user_id = %s
-                         AND access_fingerprint = %s AND status = 'passed'""",
-                    (invitation_id, candidate_user_id, identity_fingerprint),
+                         AND access_fingerprint = %s AND status = 'passed' AND evidence_expires_at>UTC_TIMESTAMP() AND verification_method=%s""",
+                    (invitation_id, candidate_user_id, identity_fingerprint, method),
                 )
                 if cursor.fetchone() is None:
-                    raise HTTPException(status_code=403, detail="Complete ID card and face matching before starting")
+                    raise HTTPException(status_code=403, detail="Complete identity verification before starting")
+                from .readiness import require_complete
+                require_complete(cursor, exam, candidate_user_id, client_id, identity_fingerprint, policy_version)
                 deadline = min(now + timedelta(minutes=exam["duration_minutes"]), exam["ends_at"])
                 cursor.execute(
                     """INSERT INTO assessment_exam_sessions

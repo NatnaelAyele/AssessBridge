@@ -191,3 +191,5 @@
   .results-table td.table-empty::before { display: none; }
   .results-table td > div { min-width: 0; overflow-wrap: anywhere; }
 }
+
+.readiness-report-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 28px}.readiness-report-facts>div{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #e4ebf5;font-size:12px}.readiness-report-facts dd{margin:0;font-weight:600}.environment-report summary{font-weight:700;color:#24466b;cursor:pointer}.environment-report-event{padding:18px 0;border-bottom:1px solid #e4ebf5}.environment-report-event p{margin:6px 0;font-size:12px}@media(max-width:650px){.readiness-report-facts{grid-template-columns:1fr}}

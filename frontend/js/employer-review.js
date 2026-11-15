@@ -14,6 +14,7 @@ window.employerReview = (() => {
     framing_changed: "Framing changed", audio_clipping: "Audio clipping", digital_audio_silence: "Digital audio silence",
     identity_reference_unavailable: "Identity reference unavailable", video_analysis_unavailable: "Video analysis unavailable",
     audio_analysis_unavailable: "Audio analysis unavailable", video_coverage_gap: "Video coverage gap", audio_coverage_gap: "Audio coverage gap" };
+  let resultController = null, resultOwner = null;
   let assessments = null, initPromise = null, cards = [], cardsError = false, assessmentId = null;
   let report = null, monitoring = null, recording = null;
   let fullParts = [], fullIndex = 0, mainControls = null, inlinePlayback = null;
@@ -31,6 +32,8 @@ window.employerReview = (() => {
   }
   function notifySaved(scope, text) { if (reviewVisible) scope.notify({ id: 'saved', text }); }
   function deactivate() {
+    resultController?.destroy(); resultController = null; resultOwner = null;
+    for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
     reviewVisible = false; ++activationSerial; ++cardLoading;
     indexMessages.clearAll(); cardMessages.clearAll(); sessionMessages.clearAll(); pauseMedia();
   }
@@ -40,6 +43,7 @@ window.employerReview = (() => {
   const cardMessages = feedback.scope('review-cards');
   let fieldSequence = 0;
   function resetMessages() {
+    for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
     pendingWrites.clear();
     sessionMessages.dispose(); sessionMessages = feedback.scope('review-session');
   }
@@ -278,13 +282,14 @@ window.employerReview = (() => {
     if (busy) return;
     if (sessionReadOnly) closeReadOnlyReport();
     if (tab !== "review") pauseMedia();
-    if (report) return;
+    if (report) { if (tab === "results") renderResults(); return; }
     message(tab === 'results' ? 'results-message' : 'review-exam-load-message', 'Loading assessments...');
     try { await initialize(true, token); if (token === activationSerial) message('review-exam-load-message'); }
     catch (error) { if (token !== activationSerial) return; message(tab === "results" ? "results-message" : "review-exam-load-message", error.message, true, 0, { label: "Retry", onClick: () => activate(tab) }); }
   }
   async function loadCards() {
     const serial = ++cardLoading, owner = assessmentId;
+    if (resultOwner !== owner) { resultController?.destroy(); resultController = null; resultOwner = null; }
     if (!assessmentId) { cards = []; cardsError = false; renderCards(); renderResults(); return; }
     message("review-queue-message", "Loading candidates…");
     message("results-message");
@@ -305,7 +310,7 @@ window.employerReview = (() => {
     const filter = el("review-filter").value, state = el("review-attempt-filter").value;
     const filtered = cards.filter((card) => `${card.name} ${card.email}`.toLocaleLowerCase().includes(query)
       && (state === "all" || card.attempt_state === state)
-      && (filter === "all" || card.review_state === filter || (filter === "events" && card.event_count > 0) || (filter === "coverage" && card.coverage_attention)));
+      && (filter === "all" || (filter === "audit_attention" && card.audit_attention) || card.review_state === filter || (filter === "events" && card.event_count > 0) || (filter === "coverage" && card.coverage_attention)));
     const list = el("review-candidate-cards"); list.replaceChildren();
     el("review-card-count").textContent = `${filtered.length} of ${cards.length} candidates`;
     for (const card of filtered) {
@@ -313,6 +318,7 @@ window.employerReview = (() => {
       const heading = node("div", "review-card-heading"); heading.append(node("h3", "", card.name), badge(card.attempt_state, card.attempt_state === "disqualified"));
       article.append(heading, node("p", "review-muted", card.email));
       const badges = node("div", "review-badges"); badges.append(badge(card.review_state));
+      if(card.audit_attention)badges.append(node('span','review-badge is-warning','Audit needs attention'));
       if (card.decision) badges.append(badge(card.decision.action, card.outcome === "disqualified"));
       article.append(badges, node("p", "review-card-score", card.has_session ? score(card.score, card.possible) : "No attempt yet"));
       article.append(node("p", "review-muted", `${card.event_count} observations${card.coverage_attention ? " · Monitoring needs attention" : ""}`));
@@ -323,36 +329,11 @@ window.employerReview = (() => {
     if (!filtered.length && !cardsError) list.append(node("p", "review-empty", cards.length ? "No candidates match these filters." : "No candidates invited."));
   }
   function renderResults() {
-    const table = el("review-results-table"); table.replaceChildren();
-    el("results-count").textContent = `${cards.length} ${cards.length === 1 ? "candidate" : "candidates"}`;
-    for (const card of cards) {
-      const row = node("tr");
-      const candidate = node("td", "results-candidate"); candidate.dataset.label = "Candidate";
-      const person = node("div", "results-person"); person.append(node("strong", "", card.name), node("span", "review-muted", card.email)); candidate.append(person);
-      const attempt = node("td", "", titles[card.attempt_state] || "Not started"); attempt.dataset.label = "Exam status";
-      const completed = card.attempt_state === "submitted";
-      const automatic = node("td", "", completed && card.objective_possible > 0 ? `${card.objective_earned} / ${card.objective_possible}` : "—"); automatic.dataset.label = "MCQ score";
-      const final = node("td", "results-final"); final.dataset.label = "Final result";
-      const finalValue = node("div", "results-value");
-      if (card.outcome === "disqualified") {
-        finalValue.append(node("strong", "results-disqualified", "Disqualified"));
-        finalValue.append(node("span", "review-muted", card.attempt_state === "disqualified" ? "Exam ended early" : "Reviewer decision"));
-      } else if (card.decision) {
-        finalValue.append(node("strong", "", score(card.score, card.possible)));
-        finalValue.append(node("span", "review-muted", card.decision.action === "change_score" ? "Score changed" : "Score kept"));
-      } else {
-        finalValue.append(node("span", "review-muted", card.attempt_state === "submitted" ? "Awaiting review" : "—"));
-      }
-      final.append(finalValue);
-      const action = node("td", "results-action"); action.dataset.label = "Case report";
-      if (card.has_session) {
-        const button = node("button", "secondary-button", "View case"); button.type = "button";
-        button.addEventListener("click", () => openSession(card.invitation_id, false, true));
-        action.append(button);
-      } else action.textContent = "—";
-      row.append(candidate, attempt, automatic, final, action); table.append(row);
-    }
-    if (!cards.length && !cardsError) { const row = node("tr"); const cell = node("td", "table-empty", assessmentId ? "No candidates invited." : assessments?.length ? "Choose an exam." : "No exams yet."); cell.colSpan = 5; row.append(cell); table.append(row); }
+    if (!assessmentId) { resultController?.destroy(); resultController = null; resultOwner = null; el('review-results-table').replaceChildren(); el('results-count').textContent = '0 candidates'; return; }
+    if (resultOwner === assessmentId) { resultController.reload(); return; }
+    resultController?.destroy(); resultOwner = assessmentId; const owner = assessmentId;
+    resultController = AssessBridgeReporting.mount({ variant: 'reviewer', table: el('review-results-table'), host: el('results-report-controls'), pagerHost: el('results-report-pagination'), feedback, count: el('results-count'), assessment: owner,
+      base: `/api/employer/assessments/${owner}`, pdfBase: id => `/api/employer/assessments/${owner}/invitations/${id}/exports/audit.pdf`, onView: id => openSession(id, false, true) });
   }
   async function monitoringReport(url) {
     const result = await api(url); const events = [...result.events]; let after = result.next_after_id;
@@ -405,6 +386,10 @@ window.employerReview = (() => {
     }
     for (const pane of document.querySelectorAll("[data-review-pane]")) pane.hidden = pane.dataset.reviewPane !== tab;
     if (tab !== "integrity") pauseMedia();
+    if(report&&['notes','history'].includes(tab)){
+      const options={base:base()+'/review',feedback:employerFeedback,readOnly:sessionReadOnly||report.published,revision:report.revision,onReload:refreshReport,onSaved:result=>{if(result.revision&&!result.duplicate)report.revision=result.revision;else{stale=true;updateDecisionDisabled();}},onReference:ref=>{if(ref.kind==='observation'){selectTab('integrity');const event=monitoring.events.find(e=>e.event_key===ref.key);const article=event&&el('review-event-'+event.id);if(article){article.scrollIntoView({block:'center'});article.querySelector('.review-play-observation')?.click();}}else if(ref.kind==='interruption')selectTab('connectivity');else{el('review-case-notes').dataset.focusNote=ref.key;selectTab('notes');}}};
+      if(tab==='notes')AssessBridgeCasework.mountNotes(el('review-case-notes'),options);else AssessBridgeCasework.mountHistory(el('review-case-history'),options);
+    }
   }
   function renderSession() {
     setSessionMode(sessionReadOnly);
@@ -426,7 +411,9 @@ window.employerReview = (() => {
       ["How exam ended", endMethod],
       ["Automatic multiple choice grade", report.scores.objective_possible ? `${report.scores.objective_earned} / ${report.scores.objective_possible}` : "—"],
       ["Final total grade", report.outcome === "disqualified" ? "Disqualified" : report.decision ? score(scoreValue, report.scores.possible) : report.attempt_state !== "in_progress" ? "Awaiting review" : "In progress"],
-      ["Identity check", report.identity?.status === "passed" ? "Passed" : report.identity?.status === "failed" ? "Failed" : "Not checked"]]);
+      ["Identity check", report.identity?.verification_method === 'esignet_demo' ? 'Demo identity authenticated' : report.identity?.status === "passed" ? "Passed" : report.identity?.status === "failed" ? "Failed" : "Not checked"]]);
+    const showConcern=(id,value,title)=>{sessionMessages.clear(id);if(value)sessionMessages.show({id,target:el(id),tone:'warning',text:`${title}: ${value.reason}\nRecorded by ${value.actor_name} / ${date(value.created_at)}`});};
+    showConcern('review-audit-concern',report.audit_concern,'Audit needs attention');showConcern('review-assessment-hold',report.publication_hold,'Publication on hold');
     renderCoverage(); renderHistory(); renderQuestions(); renderEvents(); renderFindingHistory(); renderRecording(); renderConnectivity();
     el("review-policy-lock").hidden = !report.system_disqualification_locked;
     el("review-decision-state").textContent = report.decision ? `${titles[report.decision.action]} · ${date(report.decision.created_at)}` : "No disposition recorded.";
@@ -1088,5 +1075,6 @@ window.employerReview = (() => {
   window.setInterval(() => { if (!el("review-exams").hidden) renderExamList(); else if (!el("review-session").hidden) updateTimeUsed(); }, 30000);
   window.addEventListener("beforeunload", (event) => { if (dirty || findingDrafts.size || connectivityDrafts.size) { event.preventDefault(); event.returnValue = ""; } });
   if (["review", "results"].includes(location.hash.slice(1))) activate();
+  el('review-export').onclick = () => { if (report) AssessBridgeReporting.pdfButton({button: el('review-export'), url: base()+'/exports/audit.pdf', name: `assessment-${report.assessment_id}-session-${report.invitation_id}-audit.pdf`, scope: sessionMessages, target: el('review-session-message')}); };
   return { activate, pauseMedia, deactivate };
 })();

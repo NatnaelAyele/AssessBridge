@@ -18,7 +18,7 @@ window.candidateFeedback = (() => {
   function clearExamWarnings() {
     for (const id of ['connection-status', 'exam-error', 'exam-monitoring-warning', 'device-error',
       'recovery-error', 'start-error', 'consent-error', 'identity-error', 'network-check-status',
-      'save-status', 'recording-status']) show(id, '');
+      'save-status', 'recording-status', 'readiness-error']) show(id, '');
     const warning = document.getElementById('exam-device-warning');
     if (warning) warning.hidden = true;
   }
@@ -27,7 +27,7 @@ window.candidateFeedback = (() => {
     if (response.status === 401) return 'Your session ended. Sign in and enter your exam credentials again.';
     if (response.status === 403) return detail.includes('Safe Exam Browser')
       ? 'Open the SEB link from your exam invitation.' : 'Your exam access is unavailable. Sign in and check your exam credentials.';
-    if (response.status === 428) return 'Complete the recovery checks before continuing.';
+    if (response.status === 428) return detail.includes('readiness') ? 'Complete the readiness checks and confirm the statements before starting.' : 'Complete the recovery checks before continuing.';
     if (response.status === 409) return 'The exam state changed. Reconnect to check your attempt before continuing.';
     if (response.status === 422) return 'Check the entered information and try again.';
     return fallback;

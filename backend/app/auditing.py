@@ -19,6 +19,8 @@ from .reviews import candidate_cards, iso, now, session_report, _audit, _version
 class AuditCompletion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     expected_version: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_outcome: int = Field(default=0,ge=0)
+    resolution_reason: str = Field(default="",max_length=5000)
 
 
 def assessment_for_auditor(cursor, assessment_id, lock=False):
@@ -57,6 +59,8 @@ def _evidence_version(cursor, session_id):
     revision = _version(cursor, session_id)
     snapshot = {"review_revision": revision}
     queries = {
+        "readiness": "SELECT r.id,r.passed FROM assessment_readiness_records r JOIN assessment_exam_sessions s ON s.invitation_id=r.invitation_id WHERE s.id=%s ORDER BY r.id",
+        "environment": "SELECT e.id FROM assessment_environment_events e JOIN assessment_exam_sessions s ON s.invitation_id=e.invitation_id WHERE s.id=%s ORDER BY e.id",
         "connectivity": "SELECT event_type,occurred_at,details_json FROM assessment_connectivity_events WHERE session_id=%s ORDER BY occurred_at,id",
         "connectivity_findings": "SELECT incident_event_id,revision,finding,reason,reviewer_user_id,created_at FROM assessment_connectivity_findings WHERE session_id=%s ORDER BY revision",
         "session": "SELECT submitted_at,disqualified_at,interrupted_at,interruption_reason,disqualification_reason,current_index FROM assessment_exam_sessions WHERE id=%s",
@@ -88,19 +92,26 @@ def _status(cursor, session_id):
                       WHERE s.id=%s AND p.is_legacy=FALSE LIMIT 1""", (session_id,))
     if cursor.fetchone() and history:
         matching = history[0]
+    from .casework import latest_outcome, public
+    outcome=latest_outcome(cursor,session_id)
+    concern=bool(outcome and outcome['kind']=='needs_attention')
+    if concern:matching=None
+    elif matching and outcome:
+        matching={**matching,'auditor_user_id':outcome['actor_id'],'auditor_username':outcome['actor_name'],'created_at':iso(outcome['created_at'])}
     return {"version": version, "current": matching, "history": history,
-            "status": "audited" if matching else "changed" if history else "pending"}, snapshot
+            "outcome_revision":outcome['id'] if outcome else 0, "concern":public(outcome) if concern else None,
+            "status": "needs_attention" if concern else "audited" if matching else "changed" if history else "pending"}, snapshot
 
 
-def assessments(page=1, search="", audit="all"):
-    where, params = ["a.ends_at<=UTC_TIMESTAMP()"], []
+def assessments(page=1, search="", audit="all", company_id=None):
+    where, params = ["a.ends_at<=UTC_TIMESTAMP()", "a.company_id=%s"], [company_id]
     if search:
         where.append("(LOCATE(LOWER(%s),LOWER(a.title))>0 OR LOCATE(LOWER(%s),LOWER(COALESCE(a.internal_reference,'')))>0)")
         params.extend([search, search])
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         cursor.execute("""SELECT a.id,a.title,a.internal_reference,a.starts_at,a.ends_at,COUNT(i.id) AS candidate_count
-                          FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id=a.id"""
+                          FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id=a.id AND i.removed_at IS NULL"""
                        + (" WHERE " + " AND ".join(where) if where else "")
                        + " GROUP BY a.id ORDER BY a.created_at DESC,a.id DESC", tuple(params))
         items = cursor.fetchall()
@@ -158,7 +169,7 @@ def case_report(assessment_id, invitation_id, auditor_id, source_ip):
         media = {"status": "unavailable", "parts": []}
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("""SELECT status,name_similarity,face_similarity,
+        cursor.execute("""SELECT status,name_similarity,face_similarity,verification_method,
                           (card_ciphertext IS NOT NULL AND evidence_expires_at>UTC_TIMESTAMP()) AS card_available,
                           (selfie_ciphertext IS NOT NULL AND evidence_expires_at>UTC_TIMESTAMP()) AS selfie_available
                           FROM assessment_identity_checks WHERE invitation_id=%s""", (invitation_id,))
@@ -176,7 +187,7 @@ def case_report(assessment_id, invitation_id, auditor_id, source_ip):
     return {"review": detail, "reviewer": reviewer, "identity": identity, "monitoring": monitoring, "recording": media, "audit": audit}
 
 
-def complete(assessment_id, invitation_id, auditor_id, expected_version, source_ip):
+def complete(assessment_id, invitation_id, auditor_id, expected_version, source_ip, resolution_reason="",expected_outcome=None):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         session = _session(cursor, assessment_id, invitation_id, lock=True)
@@ -190,6 +201,10 @@ def complete(assessment_id, invitation_id, auditor_id, expected_version, source_
             raise HTTPException(409, "The report changed. Reload it before marking it audited.")
         if status["current"]:
             return {"audit": status, "duplicate": True}
+        if expected_outcome is not None and status.get("outcome_revision",0)!=expected_outcome:
+            raise HTTPException(409,"The report or audit changed. Reload the report.")
+        if status.get("concern") and len(resolution_reason.strip())<5:
+            raise HTTPException(422,"Explain how the audit concern was resolved using at least 5 characters.")
         cursor.execute("SELECT id FROM assessment_review_decisions WHERE session_id=%s LIMIT 1", (session["id"],))
         decision = cursor.fetchone()
         if not (session["submitted_at"] or session["disqualified_at"] or session.get("interrupted_at")) or not decision:
@@ -203,11 +218,14 @@ def complete(assessment_id, invitation_id, auditor_id, expected_version, source_
         auditor = cursor.fetchone()
         if not auditor:
             raise HTTPException(403, "Access denied")
-        cursor.execute("""INSERT INTO assessment_audit_completions
-                          (session_id,review_revision,evidence_version,auditor_user_id,auditor_username,snapshot_json,created_at)
-                          VALUES (%s,%s,%s,%s,%s,%s,%s)""",
-                       (session["id"], snapshot["review_revision"], expected_version, auditor_id, auditor["username"],
-                        json.dumps(snapshot, default=str), now()))
+        cursor.execute('SELECT id FROM assessment_audit_completions WHERE session_id=%s AND evidence_version=%s',(session['id'],expected_version))
+        if not cursor.fetchone():
+            cursor.execute("""INSERT INTO assessment_audit_completions
+                              (session_id,review_revision,evidence_version,auditor_user_id,auditor_username,snapshot_json,created_at)
+                              VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                           (session['id'],snapshot['review_revision'],expected_version,auditor_id,auditor['username'],json.dumps(snapshot,default=str),now()))
+        from .casework import actor
+        cursor.execute("INSERT INTO assessment_audit_outcomes(session_id,kind,reason,evidence_version,actor_id,actor_name,created_at) VALUES(%s,'audited',%s,%s,%s,%s,%s)",(session['id'],resolution_reason.strip(),expected_version,auditor_id,actor(cursor,auditor_id),now()))
         _audit(cursor, session["id"], auditor_id, "mark_audited", source_ip)
         status, _ = _status(cursor, session["id"])
         connection.commit()
@@ -233,3 +251,65 @@ def identity_image(assessment_id, invitation_id, kind: Literal["card", "selfie"]
         _audit(cursor, session["id"], auditor_id, f"audit_identity_{kind}", source_ip)
         connection.commit()
     return raw
+
+
+def overview(company_id):
+    """Company-wide closed-assessment readiness, using the audit evidence version."""
+    from .publications import publication_history
+    queue, ready, waiting = [], [], []
+    totals = {'ready_for_audit': 0, 'awaiting_review': 0, 'ready_to_publish': 0, 'published': 0}
+    with database() as connection:
+        connection.start_transaction(isolation_level='REPEATABLE READ', consistent_snapshot=True)
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute('SELECT name FROM companies WHERE id=%s AND is_active=TRUE', (company_id,))
+        company = cursor.fetchone()
+        if not company:
+            raise HTTPException(403, 'Company access unavailable')
+        cursor.execute("""SELECT a.id,a.title,a.internal_reference,a.ends_at,
+                          EXISTS(SELECT 1 FROM assessment_result_publications p WHERE p.assessment_id=a.id AND p.is_legacy=FALSE) AS published
+                          FROM assessments a WHERE a.company_id=%s AND a.ends_at<=UTC_TIMESTAMP()
+                          ORDER BY a.ends_at,a.id""", (company_id,))
+        exams = cursor.fetchall()
+        for exam in exams:
+            if exam.pop('published'):
+                totals['published'] += 1
+                continue
+            cursor.execute("""SELECT i.id AS invitation_id,s.id,s.submitted_at,s.disqualified_at,s.interrupted_at,
+                              EXISTS(SELECT 1 FROM assessment_review_decisions d WHERE d.session_id=s.id) AS reviewed
+                              FROM assessment_invitations i LEFT JOIN assessment_exam_sessions s ON s.invitation_id=i.id
+                              WHERE i.assessment_id=%s AND i.removed_at IS NULL ORDER BY i.id""", (exam['id'],))
+            sessions = cursor.fetchall()
+            counts = dict(needs_attention=0,candidates=len(sessions), ready=0, audited=0, review_pending=0, evidence_pending=0, changed=0, no_attempt=0, unfinished=0)
+            for session in sessions:
+                if not session['id']:
+                    counts['no_attempt'] += 1
+                    continue
+                terminal = bool(session['submitted_at'] or session['disqualified_at'] or session['interrupted_at'])
+                pending = evidence_pending(cursor, session)
+                status, _ = _status(cursor, session['id'])
+                if not terminal: counts['unfinished'] += 1
+                if not session['reviewed']: counts['review_pending'] += 1
+                if pending: counts['evidence_pending'] += 1
+                if status.get('concern'): counts['needs_attention']+=1
+                elif status['history'] and not status['current']: counts['changed'] += 1
+                eligible = terminal and session['reviewed'] and not pending
+                if eligible and status['current']: counts['audited'] += 1
+                elif eligible: counts['ready'] += 1
+            exam['ends_at'] = iso(exam['ends_at'])
+            exam.update(counts)
+            totals['ready_for_audit'] += counts['ready']
+            totals['awaiting_review'] += counts['review_pending']
+            if counts['ready']: queue.append(exam)
+            from .casework import latest_hold
+            hold=latest_hold(cursor,exam['id'])
+            held=bool(hold and hold['kind']=='held')
+            if counts['candidates'] and counts['audited'] == counts['candidates'] and not held: ready.append(exam)
+            blockers = {key:counts[key] for key in ('review_pending','evidence_pending','changed','no_attempt','unfinished','needs_attention') if counts[key]}
+            if held: blockers['publication_hold']=1
+            if not sessions: blockers['no_candidates'] = 1
+            if blockers: waiting.append({**exam,'blockers':blockers})
+        connection.commit()
+    totals['ready_to_publish'] = len(ready)
+    recent = publication_history(company_id=company_id)['items'][:3]
+    return {'company':company['name'], 'updated_at':iso(now()), 'totals':totals,
+            'queue':queue, 'ready_to_publish':ready, 'waiting':waiting, 'recent_publications':recent}

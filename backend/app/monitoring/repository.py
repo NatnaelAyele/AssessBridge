@@ -10,7 +10,6 @@ import mysql.connector
 
 from fastapi import HTTPException
 
-from ..config import RECORDING_RETENTION_DAYS
 from ..db import database
 from .rules import POLICY
 
@@ -33,15 +32,17 @@ def unpack(value):
 
 
 def create_run(cursor, session, exam):
+    from ..retention import for_invitation
+    retention=for_invitation(cursor,session["invitation_id"])
     policy = deepcopy(POLICY)
     policy["prohibited_items"] = [item.strip() for item in (exam.get("rules_text") or "").split(",") if item.strip()]
     cursor.execute(
         """INSERT IGNORE INTO assessment_monitoring_runs
            (session_id, policy_json, capabilities_json, reference_ciphertext, reference_expires_at, created_at)
-           SELECT %s, %s, %s, selfie_ciphertext, %s, %s FROM assessment_identity_checks
+           SELECT %s, %s, %s, selfie_ciphertext, CASE WHEN %s THEN %s ELSE evidence_expires_at END, %s FROM assessment_identity_checks
            WHERE invitation_id = %s AND candidate_user_id = %s AND status = 'passed'""",
         (session["id"], json.dumps(policy), json.dumps(CAPABILITIES),
-         now() + timedelta(days=RECORDING_RETENTION_DAYS), now(),
+         retention["legacy"], now()+timedelta(days=retention["monitoring_days"]), now(),
          session["invitation_id"], session["candidate_user_id"]),
     )
 
@@ -121,8 +122,8 @@ def reconcile_gaps():
             """SELECT s.id,s.started_at,COALESCE(s.submitted_at,s.disqualified_at,s.interrupted_at) AS ended_at
                FROM assessment_monitoring_runs m JOIN assessment_exam_sessions s ON s.id=m.session_id
                JOIN assessment_recordings r ON r.session_id=s.id
-               WHERE r.status IN ('complete','incomplete') AND NOT EXISTS (SELECT 1 FROM assessment_monitoring_jobs j WHERE j.session_id=s.id AND j.status IN ('pending','processing')) AND COALESCE(s.submitted_at,s.disqualified_at,s.interrupted_at) BETWEEN %s AND %s""",
-            (now()-timedelta(days=RECORDING_RETENTION_DAYS), now()),
+               WHERE r.status IN ('complete','incomplete') AND NOT EXISTS (SELECT 1 FROM assessment_monitoring_jobs j WHERE j.session_id=s.id AND j.status IN ('pending','processing')) AND COALESCE(s.submitted_at,s.disqualified_at,s.interrupted_at)<=%s AND (r.expires_at IS NULL OR r.expires_at>%s)""",
+            (now(), now()),
         )
         sessions = cursor.fetchall()
         for session in sessions:
@@ -172,7 +173,7 @@ def report(assessment_id, invitation_id, employer_id, after_id=0, limit=200):
                FROM assessments a JOIN assessment_invitations i ON i.assessment_id=a.id
                JOIN assessment_exam_sessions s ON s.invitation_id=i.id
                LEFT JOIN assessment_monitoring_runs m ON m.session_id=s.id
-               WHERE a.id=%s AND i.id=%s AND a.employer_user_id=%s""",
+               WHERE a.id=%s AND i.id=%s AND a.company_id = (SELECT company_id FROM users WHERE id=%s)""",
             (assessment_id, invitation_id, employer_id),
         )
         session = cursor.fetchone()

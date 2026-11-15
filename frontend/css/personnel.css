@@ -1,0 +1,82 @@
+/* Personnel workspace styling; shared auditor pages retain their own layout. */
+.personnel-dashboard {background:#f5f8fc;font-size:14px;line-height:1.5;}
+.personnel-dashboard select {font:inherit;}
+.personnel-dashboard .app-shell {grid-template-columns:240px minmax(0,1fr);}
+.personnel-dashboard .sidebar {position:sticky;top:0;height:100dvh;background:#fff;border-right:1px solid #e0e8f3;color:#204c80;padding:30px 18px 22px;}
+.personnel-dashboard .sidebar-top {padding:2px 10px 32px;}
+.personnel-dashboard .workspace-label {margin-top:18px;color:#8798ae;font-size:9px;letter-spacing:.12em;}
+.personnel-dashboard .side-nav {gap:7px;}
+.personnel-dashboard .nav-item {color:#667d99;font-size:12px;padding:13px 14px;gap:12px;min-height:46px;}
+.personnel-dashboard .nav-item svg {height:18px;width:18px;flex-shrink:0;}
+.personnel-dashboard .nav-item:hover {color:#0b58ad;background:#f5f9ff;}
+.personnel-dashboard .nav-item.is-active {color:#0b58ad;background:#edf4ff;border-color:#dbe8fa;}
+.personnel-dashboard .sidebar-bottom {display:flex;align-items:center;gap:10px;border-top:1px solid #e7eef7;margin-top:auto;padding:22px 0 0;color:#3c587a;}
+.personnel-dashboard .sidebar-bottom strong {display:block;font-size:11px;}
+.personnel-dashboard .sidebar-bottom small {display:block;color:#90a0b5;font-size:10px;margin-top:3px;}
+.personnel-dashboard .personnel-role-mark {width:34px;height:34px;display:grid;place-items:center;border-radius:50%;background:#edf4ff;color:#326daa;font-size:11px;font-weight:700;}
+.personnel-dashboard .topbar {min-height:72px;padding:16px 36px;}
+.personnel-dashboard .topbar-context {font-size:12px;font-weight:400;color:#8796aa;}
+.personnel-dashboard .topbar-account {font-size:12px;}
+.personnel-dashboard .main-content {max-width:1560px;padding:32px 36px 64px;}
+.personnel-dashboard .page-heading {margin-bottom:28px;}
+.personnel-dashboard h1 {font-size:30px;letter-spacing:-.8px;margin-bottom:8px;}
+.personnel-dashboard .page-heading p:last-child {font-size:13px;color:#7b8ea8;}
+.personnel-dashboard .eyebrow {font-size:10px;letter-spacing:.13em;}
+.personnel-dashboard .primary-button,.personnel-dashboard .secondary-button {min-height:44px;font-size:12px;border-radius:8px;padding:11px 16px;}
+.personnel-dashboard .card {border-color:#dfe8f3;box-shadow:0 2px 5px #183d6703;border-radius:12px;}
+.personnel-intro {display:flex;justify-content:space-between;align-items:center;gap:24px;border:1px solid #d9e6f6;border-radius:14px;padding:32px;background:linear-gradient(110deg,#fff,#edf5ff);}
+.personnel-intro h2 {font-size:26px;letter-spacing:-.6px;margin:0 0 10px;color:#21436f;}
+.personnel-intro p:last-child {font-size:13px;color:#748ba6;margin-bottom:0;}
+.workspace-emblem {display:grid;place-items:center;width:76px;height:76px;border:1px solid #d5e4f7;border-radius:20px;background:#fff;color:#407ebf;flex-shrink:0;}
+.workspace-emblem svg {height:36px;width:36px;}
+.personnel-dashboard .feature-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
+.personnel-dashboard .feature-card {min-height:225px;padding:26px;border-color:#dfe8f3;box-shadow:none;border-radius:12px;}
+.personnel-dashboard .feature-card:hover {border-color:#88b1e3;box-shadow:0 8px 22px #183d6708;}
+.feature-icon {display:grid;place-items:center;width:40px;height:40px;border:1px solid #dce9fa;background:#f3f8ff;border-radius:10px;color:#3678bc;margin-bottom:20px;}
+.feature-icon svg {width:21px;height:21px;}
+.personnel-dashboard .feature-card strong {font-size:16px;font-weight:600;margin-bottom:7px;}
+.personnel-dashboard .feature-description {font-size:13px;line-height:1.6;color:#7c8fa8;}
+.personnel-dashboard .card-link {display:flex;width:100%;justify-content:space-between;align-items:center;font-size:12px;margin-top:20px;padding-top:18px;border-top:1px solid #edf1f7;}
+.personnel-dashboard .card-link span {font-size:18px;}
+.personnel-dashboard .section-heading {margin:28px 0 16px;}
+.personnel-dashboard .section-heading h2 {font-size:16px;}
+.personnel-dashboard .editor-layout {grid-template-columns:225px minmax(0,1fr);gap:24px;}
+.personnel-dashboard .stepper {position:sticky;top:24px;padding:18px 10px;}
+.personnel-dashboard .step-item {min-height:66px;border-radius:8px;padding:12px 10px;}
+.personnel-dashboard .step-item strong {font-size:11px;}
+.personnel-dashboard .step-item small {font-size:10px;}
+.personnel-dashboard .step-item.is-active {background:#edf4ff;}
+.personnel-dashboard .editor-main {padding:30px;}
+.personnel-dashboard .step-panel h2 {font-size:23px;}
+.personnel-dashboard .section-copy {font-size:13px;margin-bottom:26px;}
+.personnel-dashboard .form-grid {gap:22px;}
+.personnel-dashboard .form-field input,.personnel-dashboard .form-field textarea,.personnel-dashboard .form-field select {font-size:13px;min-height:46px;border-color:#cad9ec;}
+.personnel-dashboard .form-field label {font-size:12px;}
+.personnel-dashboard .soft-card,.personnel-dashboard .choice-group {background:#fbfdff;}
+.personnel-dashboard .assessment-filters {background:#f8faff;border-color:#e3ebf7;border-radius:10px;gap:14px;}
+.personnel-dashboard .assessment-filters input,.personnel-dashboard .assessment-filters select {font-size:12px;min-height:44px;}
+.personnel-dashboard .assessment-list-head {font-size:10px;letter-spacing:.05em;color:#8193ac;padding:12px 18px;}
+.personnel-dashboard .assessment-list-item,.personnel-dashboard .review-exam-item {padding:20px 18px;border-color:#e0e9f5;border-radius:9px;}
+.personnel-dashboard .assessment-list-item strong,.personnel-dashboard .review-exam-item strong {font-weight:600;font-size:14px;}
+.personnel-dashboard .assessment-list-item.is-selected {border-color:#78a6df;background:#f1f7ff;box-shadow:inset 3px 0 #0b58ad;}
+.personnel-dashboard .section-card {padding:26px;}
+.personnel-dashboard .section-card-head h2 {font-size:18px;font-weight:600;}
+.personnel-dashboard .detail-header {padding:28px;}
+.personnel-dashboard .detail-grid {gap:20px;}
+.personnel-dashboard .review-candidate-card {padding:24px;gap:14px;}
+.personnel-dashboard .review-card-heading h3 {font-size:16px;font-weight:600;}
+.personnel-dashboard .review-session-head {padding:26px;}
+.personnel-dashboard .review-session-identities strong {font-size:18px;}
+.personnel-dashboard .review-tabs {padding:5px;border-color:#dfe8f3;gap:4px;}
+.personnel-dashboard .review-tabs button {font-size:12px;min-height:44px;}
+.personnel-dashboard .review-tabs button[aria-selected=true] {background:#edf4ff;}
+.personnel-dashboard .review-event {padding:24px;border-color:#dfe8f3;}
+.personnel-dashboard .review-toolbar {padding:18px;border:1px solid #e3ebf7;border-radius:10px;background:#f8faff;}
+.personnel-dashboard table {font-size:12px;}
+.personnel-dashboard th {font-size:10px;letter-spacing:.04em;color:#7b90ab;background:#f8faff;}
+.personnel-dashboard td {font-size:12px;padding-top:16px;padding-bottom:16px;}
+@media(max-width:1200px){.personnel-dashboard .app-shell{grid-template-columns:210px minmax(0,1fr)}.personnel-dashboard .sidebar{padding-inline:12px}.personnel-dashboard .main-content{padding:28px}.personnel-dashboard .editor-layout{grid-template-columns:190px minmax(0,1fr);gap:16px}.personnel-dashboard .editor-main{padding:24px}.personnel-dashboard .step-item{gap:8px;padding:10px 7px}}
+@media(max-width:800px){.personnel-dashboard .app-shell{display:block}.personnel-dashboard .sidebar{position:static;height:auto;padding:12px 16px;border-right:0;border-bottom:1px solid #e0e8f3}.personnel-dashboard .sidebar-top,.personnel-dashboard .sidebar-bottom{display:none}.personnel-dashboard .side-nav{display:flex}.personnel-dashboard .nav-item{min-height:42px;width:auto;padding:10px 12px}.personnel-dashboard .nav-item svg{display:none}.personnel-dashboard .topbar{padding:14px 20px}.personnel-dashboard .main-content{padding:24px 20px 48px}.personnel-dashboard .editor-layout{display:block}.personnel-dashboard .stepper{position:static;display:flex;overflow:auto;gap:5px;padding:10px;margin-bottom:18px}.personnel-dashboard .stepper .side-heading,.personnel-dashboard .step-item small{display:none}.personnel-dashboard .step-item{width:auto;min-height:42px;flex:none;padding:8px 10px}.personnel-dashboard .step-item strong{white-space:nowrap}}
+@media(max-width:650px){.personnel-dashboard .main-content{padding:22px 16px 44px}.personnel-dashboard h1{font-size:27px}.personnel-intro{padding:24px}.personnel-intro h2{font-size:22px}.workspace-emblem{display:none}.personnel-dashboard .feature-grid{grid-template-columns:1fr;gap:14px}.personnel-dashboard .feature-card{min-height:200px;padding:22px}.personnel-dashboard .editor-main,.personnel-dashboard .section-card,.personnel-dashboard .review-event{padding:20px}.personnel-dashboard .review-toolbar{padding:14px}.personnel-dashboard .page-heading{gap:18px}.personnel-dashboard .assessment-filters{gap:12px}.personnel-dashboard .review-session-identities{grid-template-columns:1fr;gap:14px}.personnel-dashboard .assessment-list-head{display:none}.personnel-dashboard .review-tabs{gap:3px}.personnel-dashboard .review-tabs button{min-width:110px;font-size:11px}}
+
+.personnel-dashboard .roster-remove-button{color:#a21d38;border-color:#e8ccd3;min-height:36px;padding:7px 12px;font-size:11px}.personnel-dashboard .roster-remove-button:hover{background:#fff1f3;}

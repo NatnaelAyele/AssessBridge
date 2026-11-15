@@ -106,6 +106,11 @@ class SendInvitationsRequest(BaseModel):
     @field_validator("identity_policy")
     @classmethod
     def valid_identity_documents(cls, value: str) -> str:
+        from . import esignet
+        if value == esignet.POLICY:
+            if not esignet.enabled():
+                raise ValueError('Demo identity authentication is disabled')
+            return value
         if value not in {"Fayda ID", "Other ID cards"}:
             raise ValueError("Choose Fayda ID card or Other ID cards")
         return value
@@ -141,7 +146,7 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
     if ((candidates_min is not None and candidates_max is not None and candidates_min > candidates_max)
             or (questions_min is not None and questions_max is not None and questions_min > questions_max)):
         raise HTTPException(status_code=422, detail="Minimum filter value cannot exceed maximum")
-    where = ["a.employer_user_id = %s"]
+    where = ["a.company_id = (SELECT company_id FROM users WHERE id=%s)"]
     parameters: list = [employer_id]
     if search:
         where.append("(LOCATE(LOWER(%s), LOWER(a.title)) > 0 OR LOCATE(LOWER(%s), LOWER(a.internal_reference)) > 0)")
@@ -152,6 +157,8 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
         where.append("a.starts_at <= UTC_TIMESTAMP() AND a.ends_at > UTC_TIMESTAMP()")
     elif status == "closed":
         where.append("a.ends_at <= UTC_TIMESTAMP()")
+    from .retention import live_sql
+    where.append(live_sql())
     having = []
     for field, minimum, maximum in (("sent_count", candidates_min, candidates_max),
                                     ("question_count", questions_min, questions_max)):
@@ -166,7 +173,7 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
         "JSON_LENGTH(a.questions_json) AS question_count, COUNT(i.id) AS candidate_count, "
         "COALESCE(SUM(i.delivery_status = 'sent'), 0) AS sent_count, "
         "COALESCE(SUM(i.delivery_status = 'failed'), 0) AS failed_count "
-        "FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id = a.id "
+        "FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id = a.id AND i.removed_at IS NULL "
         f"WHERE {' AND '.join(where)} GROUP BY a.id"
         + (f" HAVING {' AND '.join(having)}" if having else "")
     )
@@ -204,8 +211,9 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
             cursor = connection.cursor(dictionary=True)
             cursor.execute(
                 """SELECT id, title, description, internal_reference, duration_minutes,
-                          starts_at, ends_at, identity_policy, questions_json, JSON_LENGTH(questions_json) AS question_count
-                   FROM assessments WHERE id = %s AND employer_user_id = %s""",
+                          starts_at, ends_at, identity_policy, questions_json, JSON_LENGTH(questions_json) AS question_count,
+                          EXISTS(SELECT 1 FROM assessment_result_publications p WHERE p.assessment_id=assessments.id AND p.is_legacy=FALSE) AS published
+                   FROM assessments WHERE id = %s AND company_id = (SELECT company_id FROM users WHERE id=%s)""",
                 (assessment_id, employer_id),
             )
             assessment = cursor.fetchone()
@@ -235,7 +243,7 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
                        SELECT session_id, SUM(JSON_TYPE(answer_json) <> 'NULL') AS answered_count
                        FROM assessment_exam_answers GROUP BY session_id
                    ) a ON a.session_id = s.id
-                   WHERE i.assessment_id = %s ORDER BY i.id""",
+                   WHERE i.assessment_id = %s AND i.removed_at IS NULL ORDER BY i.id""",
                 (assessment_id,),
             )
             candidates = cursor.fetchall()
@@ -247,6 +255,7 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
         "description": assessment["description"], "internal_reference": assessment["internal_reference"],
         "identity_policy": assessment["identity_policy"] or "Fayda ID",
         "duration_minutes": assessment["duration_minutes"], "question_count": assessment["question_count"],
+        "published": bool(assessment.get("published")),
         "questions": json.loads(assessment["questions_json"]) if isinstance(assessment["questions_json"], str) else assessment["questions_json"],
         "starts_at": assessment["starts_at"].isoformat() + "Z",
         "ends_at": assessment["ends_at"].isoformat() + "Z",
@@ -275,7 +284,7 @@ def invitation_status(assessment_id: int, employer_id: int) -> dict:
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         cursor.execute(
-            "SELECT id, title FROM assessments WHERE id = %s AND employer_user_id = %s",
+            "SELECT id, title FROM assessments WHERE id = %s AND company_id = (SELECT company_id FROM users WHERE id=%s)",
             (assessment_id, employer_id),
         )
         assessment = cursor.fetchone()
@@ -284,7 +293,7 @@ def invitation_status(assessment_id: int, employer_id: int) -> dict:
             raise HTTPException(status_code=404, detail="Assessment not found")
         cursor.execute(
             """SELECT candidate_name, candidate_email, delivery_status, sent_at
-               FROM assessment_invitations WHERE assessment_id = %s ORDER BY id""",
+               FROM assessment_invitations WHERE assessment_id = %s AND removed_at IS NULL ORDER BY id""",
             (assessment_id,),
         )
         candidates = cursor.fetchall()
@@ -350,6 +359,9 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                     ),
                 )
                 assessment_id = cursor.lastrowid
+                cursor.execute("UPDATE assessments SET company_id=(SELECT company_id FROM users WHERE id=%s) WHERE id=%s", (employer_id,assessment_id))
+                from .retention import snapshot
+                snapshot(cursor,assessment_id,new=True)
                 for candidate in payload.candidates:
                     cursor.execute(
                         "SELECT id FROM users WHERE email = %s AND role = 'candidate' AND is_active = TRUE",
@@ -364,6 +376,7 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                                 f"{SEB_BASE_URL}/exam-entry?exam={exam_username}",
                                 config_password_for(exam_username),
                                 quit_password_for(exam_username),
+                                payload.identity_policy,
                             )
                         else:
                             seb_key, seb_file = None, None
@@ -394,7 +407,7 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
         cursor = connection.cursor(dictionary=True)
         cursor.execute(
             """SELECT id, candidate_name, candidate_email, candidate_user_id, exam_username
-               FROM assessment_invitations WHERE assessment_id = %s AND delivery_status <> 'sent' ORDER BY id""",
+               FROM assessment_invitations WHERE assessment_id = %s AND removed_at IS NULL AND delivery_status IN ('pending','failed') ORDER BY id""",
             (assessment_id,),
         )
         unsent = cursor.fetchall()
@@ -403,48 +416,57 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
     for candidate in unsent:
         password = new_exam_password()
         with database() as connection:
-            cursor = connection.cursor()
-            cursor.execute(
-                "UPDATE assessment_invitations SET password_hash = %s, delivery_status = 'pending' WHERE id = %s",
-                (hash_password(password), candidate["id"]),
-            )
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute('SELECT id FROM assessments WHERE id=%s FOR UPDATE', (assessment_id,))
+            cursor.fetchone()
+            cursor.execute('SELECT removed_at,delivery_status FROM assessment_invitations WHERE id=%s FOR UPDATE', (candidate['id'],))
+            current = cursor.fetchone()
+            if not current or current['removed_at'] or current['delivery_status'] not in ('pending','failed'):
+                connection.commit()
+                continue
+            cursor.execute("UPDATE assessment_invitations SET password_hash=%s,delivery_status='pending' WHERE id=%s",(hash_password(password),candidate['id']))
+            try:
+                send_calendar_invitation(
+                    settings=mail_settings, assessment_id=assessment_id, invitation_id=candidate['id'],
+                    title=payload.title.strip(), duration_minutes=payload.duration_minutes,
+                    start=payload.starts_at, end=payload.ends_at, candidate_name=candidate['candidate_name'],
+                    candidate_email=candidate['candidate_email'], username=candidate['exam_username'], password=password,
+                    seb_config_password=config_password_for(candidate['exam_username']),
+                    seb_launch_url=f"{SEB_BASE_URL}/seb/launch/{candidate['exam_username']}",
+                    seb_quit_password=quit_password_for(candidate['exam_username']),
+                    registered=candidate['candidate_user_id'] is not None,
+                )
+                event_type, delivery_status = 'invitation_sent', 'sent'
+            except (OSError, smtplib.SMTPException):
+                event_type, delivery_status = 'invitation_failed', 'failed'
+            cursor.execute('UPDATE assessment_invitations SET delivery_status=%s,sent_at=%s WHERE id=%s',
+                           (delivery_status,datetime.now(timezone.utc).replace(tzinfo=None) if delivery_status=='sent' else None,candidate['id']))
+            cursor.execute('INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,%s,%s)',
+                           (assessment_id,employer_id,event_type,candidate['id']))
             connection.commit()
-            cursor.close()
-        try:
-            send_calendar_invitation(
-                settings=mail_settings,
-                assessment_id=assessment_id,
-                invitation_id=candidate["id"],
-                title=payload.title.strip(),
-                duration_minutes=payload.duration_minutes,
-                start=payload.starts_at,
-                end=payload.ends_at,
-                candidate_name=candidate["candidate_name"],
-                candidate_email=candidate["candidate_email"],
-                username=candidate["exam_username"],
-                password=password,
-                seb_config_password=config_password_for(candidate["exam_username"]),
-                seb_launch_url=f"{SEB_BASE_URL}/seb/launch/{candidate['exam_username']}",
-                seb_quit_password=quit_password_for(candidate["exam_username"]),
-                registered=candidate["candidate_user_id"] is not None,
-            )
-            event_type = "invitation_sent"
-            delivery_status = "sent"
-        except (OSError, smtplib.SMTPException):
-            event_type = "invitation_failed"
-            delivery_status = "failed"
-        with database() as connection:
-            cursor = connection.cursor()
-            cursor.execute(
-                "UPDATE assessment_invitations SET delivery_status = %s, sent_at = %s WHERE id = %s",
-                (delivery_status, datetime.now(timezone.utc).replace(tzinfo=None) if delivery_status == "sent" else None, candidate["id"]),
-            )
-            cursor.execute(
-                """INSERT INTO assessment_activity (assessment_id, actor_user_id, event_type, invitation_id)
-                   VALUES (%s, %s, %s, %s)""",
-                (assessment_id, employer_id, event_type, candidate["id"]),
-            )
-            connection.commit()
-            cursor.close()
 
     return invitation_status(assessment_id, employer_id)
+
+
+def remove_candidate_assignment(assessment_id:int, invitation_id:int, actor_id:int):
+    try:
+        with database() as connection:
+            cursor=connection.cursor(dictionary=True)
+            cursor.execute('SELECT id FROM assessments WHERE id=%s AND company_id=(SELECT company_id FROM users WHERE id=%s) FOR UPDATE',(assessment_id,actor_id))
+            if not cursor.fetchone():raise HTTPException(404,'Assessment not found')
+            cursor.execute('SELECT id FROM assessment_result_publications WHERE assessment_id=%s AND is_legacy=FALSE LIMIT 1',(assessment_id,))
+            if cursor.fetchone():raise HTTPException(409,'Results are published. Candidates cannot be removed.')
+            cursor.execute('SELECT id,removed_at FROM assessment_invitations WHERE id=%s AND assessment_id=%s FOR UPDATE',(invitation_id,assessment_id))
+            invitation=cursor.fetchone()
+            if not invitation:raise HTTPException(404,'Candidate assignment not found')
+            if invitation['removed_at']:
+                connection.commit()
+                return {'removed':True,'already_removed':True}
+            cursor.execute('SELECT id FROM assessment_exam_sessions WHERE invitation_id=%s FOR UPDATE',(invitation_id,))
+            if cursor.fetchone():raise HTTPException(409,'This candidate has already started the assessment and cannot be removed.')
+            cursor.execute("UPDATE assessment_invitations SET removed_at=UTC_TIMESTAMP(),removed_by=%s,delivery_status='revoked' WHERE id=%s",(actor_id,invitation_id))
+            cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'candidate_removed',%s)",(assessment_id,actor_id,invitation_id))
+            connection.commit()
+        return {'removed':True,'already_removed':False}
+    except mysql.connector.Error as exc:
+        raise HTTPException(503,'Could not remove this candidate. Try again.') from exc

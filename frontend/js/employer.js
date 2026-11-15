@@ -614,7 +614,7 @@ function renderSummary() {
   byId("summary-schedule").textContent = start || end ? `${formatDate(start)} – ${formatDate(end)}` : "Not set";
   const prohibitedItems = selectedChoices(".prohibited-item");
   const identityPolicy = document.querySelector('input[name="identity-policy"]:checked').value;
-  const identityLabel = identityPolicy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
+  const identityLabel = identityPolicy === 'Fayda demo (eSignet)' ? 'Fayda demo authentication' : identityPolicy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
   byId("summary-rules").textContent = `${prohibitedItems.length} prohibited · ${identityLabel}`;
   const questionList = byId("summary-question-list");
   const candidateList = byId("summary-candidate-list");
@@ -656,7 +656,7 @@ function renderDetail(assessment) {
   detail.dataset.endsAt = assessment.ends_at;
   byId("detail-title").textContent = assessment.title;
   byId("detail-description").textContent = assessment.description || "No instructions provided.";
-  byId("detail-identity").textContent = assessment.identity_policy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
+  byId("detail-identity").textContent = assessment.identity_policy === 'Fayda demo (eSignet)' ? 'Fayda demo authentication' : assessment.identity_policy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
   byId("detail-code").textContent = assessment.internal_reference || "Not set";
   byId("detail-duration").textContent = `${assessment.duration_minutes} min`;
   byId("detail-questions").textContent = String(assessment.question_count);
@@ -717,7 +717,7 @@ function renderDetail(assessment) {
   if (!assessment.candidates.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 4;
+    cell.colSpan = 5;
     cell.className = "table-empty";
     cell.textContent = "No candidates assigned.";
     row.append(cell);
@@ -740,8 +740,40 @@ function renderDetail(assessment) {
       cell.textContent = text;
       row.append(cell);
     }
-    table.append(row);
+    const actions = document.createElement('td');
+    if (candidate.progress === 'not_started' && !assessment.published) {
+      const remove = document.createElement('button');remove.type='button';remove.className='secondary-button roster-remove-button';remove.textContent='Remove';
+      remove.setAttribute('aria-label',`Remove ${candidate.name} from this assessment`);
+      remove.addEventListener('click',()=>removeSavedCandidate(assessment,candidate));actions.append(remove);
+    } else actions.textContent=assessment.published?'Published':'Attempt started';
+    row.append(actions);table.append(row);
   }
+}
+
+let rosterRemovalDialog = null;
+function removeSavedCandidate(assessment,candidate) {
+  if(rosterRemovalDialog || !detailFeedback.active)return;
+  const scope=detailFeedback;let refreshNeeded=false;
+  const dialog=rosterRemovalDialog=scope.confirm({id:'remove-candidate',title:'Remove candidate?',
+    text:`Remove ${candidate.name} (${candidate.email}) from ${assessment.title}? Their invitation and exam access will be revoked.`,
+    confirmLabel:'Remove candidate',busyLabel:'Removing...',destructive:true,
+    errorMessage:'Could not confirm the removal. Try again.',
+    onConfirm:async()=>{
+      let response;
+      try{response=await fetch(`/api/employer/assessments/${assessment.id}/invitations/${candidate.invitation_id}/remove`,{method:'POST',credentials:'same-origin'});}catch{dialog.setError('Could not reach AssessBridge. Try again.');return false;}
+      if(!response.ok){const body=await response.json().catch(()=>({}));const messages={
+        'Results are published. Candidates cannot be removed.':'Results are published. Candidates cannot be removed.',
+        'This candidate has already started the assessment and cannot be removed.':'This candidate has already started the assessment and cannot be removed.'};
+        dialog.setError(response.status===401?'Your session ended. Sign in again.':messages[body.detail]||(response.status===404?'This candidate assignment is unavailable. Refresh the assessment.':'Could not remove this candidate. Try again.'));
+        if([404,409].includes(response.status)){refreshNeeded=true;dialog.setConfirmDisabled(true);}return false;}
+      return true;
+    }});
+  dialog.result.then(async accepted=>{
+    if(rosterRemovalDialog===dialog)rosterRemovalDialog=null;
+    if((!accepted&&!refreshNeeded)||!scope.active||currentEmployerTab!=='detail'||selectedAssessmentId!==assessment.id)return;
+    if(accepted)employerNotices.notify({id:'candidate-removed',text:'Candidate removed. Exam access revoked.'});
+    await loadAssessments(assessmentPage,assessment.id);
+  });
 }
 
 document.querySelectorAll("[data-tab]").forEach((button) => {
@@ -903,6 +935,10 @@ fetch("/api/auth/me", { credentials: "same-origin" })
   });
 
 addRosterRow();
+fetch('/api/identity-options', {credentials:'same-origin'}).then(response => response.ok ? response.json() : {}).then(options => {
+  const option = byId('demo-identity-option');
+  if (option) option.hidden = !options.esignet_demo;
+}).catch(() => {});
 updateRoster();
 showStep("basics");
 syncQuestionType();

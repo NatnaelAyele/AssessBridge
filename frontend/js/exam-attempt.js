@@ -187,6 +187,7 @@ function showInstructions(state) {
   byId("instruction-rules-text").textContent = state.rules_text;
   byId("instruction-rules").hidden = !state.rules_text;
   showPanel("instructions-panel");
+  window.examReadiness.open(state.instructions_version);
 }
 
 async function openAfterDevices() {
@@ -397,10 +398,11 @@ byId("start-exam").addEventListener("click", async () => {
   }
   const button = byId("start-exam");
   button.disabled = true;
+  window.examReadiness.starting(true);
   button.textContent = "Starting exam…";
   candidateFeedback.show("start-error", "");
   try {
-    await window.examRecovery.readiness();
+    await window.examReadiness.confirm();
     window.assessbridgeRecording.begin(window.assessbridgeMedia.stream());
     const state = await examRequest("/api/candidate/exam/start", "POST");
     let recordingError = "";
@@ -415,6 +417,7 @@ byId("start-exam").addEventListener("click", async () => {
     candidateFeedback.show("start-error", error.message);
   } finally {
     button.disabled = false;
+    window.examReadiness.starting(false);
     button.textContent = "Start exam →";
   }
 });

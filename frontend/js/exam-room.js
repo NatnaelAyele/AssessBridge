@@ -5,6 +5,8 @@ let audioContext = null;
 let meterFrame = null;
 let pageClosing = false;
 let availabilityRequest = 0;
+let resumeAuthenticatedIdentity = false;
+let deviceContinuationInProgress = false;
 window.assessbridgeMedia = { stream: () => mediaStream };
 
 async function roomRequest(path, options = {}) {
@@ -63,6 +65,13 @@ function syncMediaState() {
   setDeviceStatus("camera", connected(camera) ? "Connected" : "Not connected", connected(camera) ? "ready" : "error");
   setDeviceStatus("microphone", connected(microphone) ? "Connected" : "Not connected", connected(microphone) ? "ready" : "error");
   byId("continue-devices").disabled = !mediaReady();
+  if (mediaReady() && resumeAuthenticatedIdentity && !deviceContinuationInProgress) {
+    // The identity provider redirect creates a new document and releases the
+    // old media stream. Continue only after both replacement tracks are live.
+    queueMicrotask(() => continueAfterDevices());
+  }
+  window.examReadiness?.track("camera", connected(camera));
+  window.examReadiness?.track("microphone", connected(microphone));
   if (!mediaReady()) window.assessbridgeRecording?.markInterrupted?.();
   if (!byId("exam-panel").hidden) window.examFlow.deviceStatusChanged();
   if (!mediaReady() && (!byId("instructions-panel").hidden || !byId("identity-panel").hidden)) {
@@ -131,7 +140,7 @@ function deviceFailureMessage(error) {
   return "Could not access both devices. Check browser permissions and try again.";
 }
 
-byId("grant-devices").addEventListener("click", async () => {
+async function grantDevices() {
   availabilityRequest += 1;
   const button = byId("grant-devices");
   button.disabled = true;
@@ -170,14 +179,17 @@ byId("grant-devices").addEventListener("click", async () => {
     button.disabled = false;
     button.textContent = mediaReady() ? "Check devices again" : "Grant camera and microphone access";
   }
-});
+}
+byId("grant-devices").addEventListener("click", grantDevices);
 
-byId("continue-devices").addEventListener("click", async () => {
+async function continueAfterDevices() {
+  if (deviceContinuationInProgress) return;
   if (!mediaReady()) {
     syncMediaState();
     return;
   }
   const button = byId("continue-devices");
+  deviceContinuationInProgress = true;
   button.disabled = true;
   setDeviceError("");
   try {
@@ -188,12 +200,30 @@ byId("continue-devices").addEventListener("click", async () => {
     if (!mediaReady()) throw new Error("A device stopped working. Check both devices again.");
     await window.examRecovery.readiness();
     if (await window.assessbridgeIdentity.prepare()) await window.examFlow.openAfterDevices();
+    resumeAuthenticatedIdentity = false;
   } catch (error) {
+    resumeAuthenticatedIdentity = false;
     setDeviceError(error.message);
   } finally {
+    deviceContinuationInProgress = false;
     button.disabled = !mediaReady();
   }
-});
+}
+byId("continue-devices").addEventListener("click", continueAfterDevices);
+
+async function restoreAuthenticatedIdentity(exam) {
+  if (exam.identity_policy !== 'Fayda demo (eSignet)') return;
+  const response = await roomRequest('/api/candidate/identity');
+  const identity = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(candidateFeedback.serverError(response, identity, 'Could not restore your identity authentication. Try again.'));
+  if (identity.demo?.authenticated || identity.status === 'passed') {
+    resumeAuthenticatedIdentity = true;
+    setDeviceError('');
+    await grantDevices();
+  } else if (identity.demo?.message) {
+    setDeviceError(identity.demo.message);
+  }
+}
 
 byId("agree").addEventListener("change", () => {
   byId("continue-button").disabled = !byId("agree").checked;
@@ -243,6 +273,12 @@ roomScriptsReady.then(() => roomRequest("/api/candidate/exam-room"))
   .then(async (exam) => {
     byId("exam-title").textContent = exam.title;
     window.assessbridgeIdentity.configure(exam.identity_policy);
+    if(exam.retention){
+      byId('exam-retention-notice').hidden=false;
+      for(const [key,name,anchor]of [['identity_days','identity','after capture'],['monitoring_days','monitoring','after the attempt ends'],['review_days','review','after the assessment closes'],['audit_days','audit','after the assessment closes']]){
+        const days=exam.retention[key];byId('notice-'+name+'-retention').textContent=days===null?'No automatic expiry':`${days} ${days===1?'day':'days'} ${anchor}`;
+      }
+    }
     if (!exam.consented) {
       showPanel("consent-panel");
       return;
@@ -251,6 +287,7 @@ roomScriptsReady.then(() => roomRequest("/api/candidate/exam-room"))
     if (!submitted) {
       showPanel("device-panel");
       checkAvailability();
+      await restoreAuthenticatedIdentity(exam);
     }
   })
   .catch((error) => showError(error.message));
