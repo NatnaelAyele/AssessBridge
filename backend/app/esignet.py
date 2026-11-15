@@ -114,8 +114,8 @@ def begin(invitation, candidate, fingerprint, policy):
         c = db.cursor(dictionary=True)
         _exam(c,invitation,candidate,policy)
         c.execute("UPDATE assessment_identity_auth_flows SET status='failed',failure_reason='replaced' WHERE invitation_id=%s AND candidate_user_id=%s AND status IN ('pending','authenticated')", (invitation,candidate))
-        c.execute("""INSERT INTO assessment_identity_auth_flows(invitation_id,candidate_user_id,access_fingerprint,state_hash,secret_ciphertext,created_at,expires_at)
-                     VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""", (invitation,candidate,fingerprint,hashlib.sha256(state.encode()).hexdigest(),secret,now(),now()+timedelta(minutes=10)))
+        c.execute('''INSERT INTO assessment_identity_auth_flows(invitation_id,candidate_user_id,access_fingerprint,state_hash,secret_ciphertext,created_at,expires_at)
+                     VALUES(%s,%s,%s,%s,%s,%s,%s)''', (invitation,candidate,fingerprint,hashlib.sha256(state.encode()).hexdigest(),secret,now(),now()+timedelta(minutes=10)))
         db.commit()
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
     params = {'client_id':config.ESIGNET_CLIENT_ID,'response_type':'code','redirect_uri':config.ESIGNET_REDIRECT_URI,
@@ -287,13 +287,13 @@ def complete(invitation,candidate,fingerprint,policy,selfie):
         checked=now().replace(microsecond=0);expires=checked+timedelta(days=for_invitation(c,invitation)['identity_days'])
         attempt=(previous['attempts'] if previous else 0)+1
         encrypted=_encrypt(jpeg.tobytes(),invitation,'selfie')
-        c.execute("""INSERT INTO assessment_identity_checks(invitation_id,candidate_user_id,access_fingerprint,status,stage,checked_at,evidence_expires_at,selfie_ciphertext,verification_method)
+        c.execute('''INSERT INTO assessment_identity_checks(invitation_id,candidate_user_id,access_fingerprint,status,stage,checked_at,evidence_expires_at,selfie_ciphertext,verification_method)
                      VALUES(%s,%s,%s,'passed','demo_complete',%s,%s,%s,%s)
-                     ON CONFLICT (invitation_id) DO UPDATE SET  access_fingerprint=EXCLUDED.access_fingerprint,status='passed',stage='demo_complete',failure_reason=NULL,
-                     card_detection_method=NULL,name_readability=NULL,name_similarity=NULL,face_similarity=NULL,checked_at=EXCLUDED.checked_at,
-                     evidence_expires_at=EXCLUDED.evidence_expires_at,card_ciphertext=NULL,selfie_ciphertext=EXCLUDED.selfie_ciphertext,verification_method=EXCLUDED.verification_method,attempts=assessment_identity_checks.attempts+1""",
+                     ON DUPLICATE KEY UPDATE access_fingerprint=VALUES(access_fingerprint),status='passed',stage='demo_complete',failure_reason=NULL,
+                     card_detection_method=NULL,name_readability=NULL,name_similarity=NULL,face_similarity=NULL,checked_at=VALUES(checked_at),
+                     evidence_expires_at=VALUES(evidence_expires_at),card_ciphertext=NULL,selfie_ciphertext=VALUES(selfie_ciphertext),verification_method=VALUES(verification_method),attempts=attempts+1''',
                      (invitation,candidate,fingerprint,checked,expires,encrypted,METHOD))
-        c.execute("INSERT INTO assessment_identity_attempts(invitation_id,candidate_user_id,attempt_number,status,stage,checked_at,verification_method) VALUES(%s,%s,%s,'passed','demo_complete',%s,%s) RETURNING id",(invitation,candidate,attempt,checked,METHOD))
+        c.execute("INSERT INTO assessment_identity_attempts(invitation_id,candidate_user_id,attempt_number,status,stage,checked_at,verification_method) VALUES(%s,%s,%s,'passed','demo_complete',%s,%s)",(invitation,candidate,attempt,checked,METHOD))
         c.execute("UPDATE assessment_identity_auth_flows SET status='completed' WHERE id=%s",(flow['id'],))
         db.commit()
     return {'status':'passed','verification_method':METHOD,'checked_at':iso(checked)}
@@ -301,4 +301,4 @@ def complete(invitation,candidate,fingerprint,policy,selfie):
 
 def purge():
     with database() as db:
-        c=db.cursor();c.execute("DELETE FROM assessment_identity_auth_flows WHERE expires_at<=(statement_timestamp() AT TIME ZONE 'UTC')");db.commit()
+        c=db.cursor();c.execute('DELETE FROM assessment_identity_auth_flows WHERE expires_at<=UTC_TIMESTAMP()');db.commit()

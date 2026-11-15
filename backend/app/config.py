@@ -10,11 +10,11 @@ load_dotenv(ROOT_DIR / ".env")
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "port": int(os.getenv("DB_PORT", "5432")),
-    "dbname": os.getenv("DB_NAME", "assessbridge"),
-    "user": os.getenv("DB_USER", "postgres"),
+    "port": int(os.getenv("DB_PORT", "3306")),
+    "database": os.getenv("DB_NAME", "assessbridge"),
+    "user": os.getenv("DB_USER", "root"),
     "password": os.getenv("DB_PASSWORD", ""),
-    "connect_timeout": 5,
+    "connection_timeout": 5,
 }
 
 JWT_SECRET = os.getenv("JWT_SECRET", "")

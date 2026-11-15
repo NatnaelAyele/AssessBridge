@@ -1,5 +1,4 @@
 """Company-scoped reporting and controlled exports. Media and credentials are never exported."""
-from psycopg import IsolationLevel
 import csv
 import hashlib
 import io
@@ -53,7 +52,7 @@ def result_data(assessment,user,filters):
  from .auditing import _status
  guard(user,assessment)
  with database() as db:
-  db.isolation_level = IsolationLevel.REPEATABLE_READ
+  db.start_transaction(isolation_level='REPEATABLE READ',consistent_snapshot=True)
   c=db.cursor(dictionary=True)
   c.execute('SELECT a.*,co.name AS company_name FROM assessments a JOIN companies co ON co.id=a.company_id WHERE a.id=%s',(assessment,));exam=c.fetchone()
   c.execute('SELECT id,created_at FROM assessment_result_publications WHERE assessment_id=%s AND is_legacy=FALSE',(assessment,));publication=c.fetchone()
@@ -91,7 +90,7 @@ def log_export(assessment,invitation,user,format,source,filters,count,content,pu
  guard(user,assessment)
  with database() as db:
   c=db.cursor(dictionary=True);c.execute("SELECT COALESCE(NULLIF(full_name,''),email,username) AS name FROM users WHERE id=%s",(user,));name=c.fetchone()['name']
-  c.execute("INSERT INTO assessment_export_audit(assessment_id,invitation_id,actor_id,actor_name,format,publication_id,source_version,filters_json,record_count,content_sha256,generated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,(statement_timestamp() AT TIME ZONE 'UTC')) RETURNING id",(assessment,invitation,user,name,format,publication,source,json.dumps(filters,default=str),count,hashlib.sha256(content).hexdigest()));db.commit()
+  c.execute('INSERT INTO assessment_export_audit(assessment_id,invitation_id,actor_id,actor_name,format,publication_id,source_version,filters_json,record_count,content_sha256,generated_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(3))',(assessment,invitation,user,name,format,publication,source,json.dumps(filters,default=str),count,hashlib.sha256(content).hexdigest()));db.commit()
 
 def spreadsheet(value):
  if value is None:return ''

@@ -1,5 +1,4 @@
 """Read-only system-wide auditor access and versioned audit completions."""
-from psycopg import IsolationLevel
 
 import hashlib
 import json
@@ -27,7 +26,7 @@ class AuditCompletion(BaseModel):
 def assessment_for_auditor(cursor, assessment_id, lock=False):
     """Every auditor operation requires the assessment window to have closed."""
     cursor.execute("""SELECT a.id,a.employer_user_id,a.questions_json,a.ends_at,
-                      a.ends_at<=(statement_timestamp() AT TIME ZONE 'UTC') AS closed,
+                      a.ends_at<=UTC_TIMESTAMP() AS closed,
                       EXISTS(SELECT 1 FROM assessment_result_publications p
                              WHERE p.assessment_id=a.id AND p.is_legacy=FALSE) AS published
                       FROM assessments a WHERE a.id=%s""" + (" FOR UPDATE" if lock else ""), (assessment_id,))
@@ -68,9 +67,9 @@ def _evidence_version(cursor, session_id):
         "events": "SELECT event_key,event_type,part_id,start_ms,end_ms,confidence,closed,updated_at FROM assessment_monitoring_events WHERE session_id=%s ORDER BY id",
         "jobs": "SELECT part_id,status,updated_at,error_code,model_version FROM assessment_monitoring_jobs WHERE session_id=%s ORDER BY part_id",
         "coverage": "SELECT x.stream,COUNT(*) AS total,SUM(x.end_ms-x.start_ms) AS duration FROM assessment_monitoring_samples x JOIN assessment_monitoring_jobs j ON j.part_id=x.part_id WHERE j.session_id=%s GROUP BY x.stream ORDER BY x.stream",
-        "media": "SELECT r.status,r.expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AS retained,p.id,p.status AS part_status,p.total_bytes,p.started_at,p.finalized_at FROM assessment_recordings r LEFT JOIN assessment_recording_parts p ON p.recording_id=r.id WHERE r.session_id=%s ORDER BY p.id",
-        "identity": "SELECT ic.status,ic.name_similarity,ic.face_similarity,ic.checked_at,ic.evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AS retained,ic.card_ciphertext IS NOT NULL AS card,ic.selfie_ciphertext IS NOT NULL AS selfie FROM assessment_identity_checks ic JOIN assessment_exam_sessions s ON s.invitation_id=ic.invitation_id WHERE s.id=%s",
-        "reference": "SELECT reference_ciphertext IS NOT NULL AND reference_expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AS available FROM assessment_monitoring_runs WHERE session_id=%s",
+        "media": "SELECT r.status,r.expires_at>UTC_TIMESTAMP() AS retained,p.id,p.status AS part_status,p.total_bytes,p.started_at,p.finalized_at FROM assessment_recordings r LEFT JOIN assessment_recording_parts p ON p.recording_id=r.id WHERE r.session_id=%s ORDER BY p.id",
+        "identity": "SELECT ic.status,ic.name_similarity,ic.face_similarity,ic.checked_at,ic.evidence_expires_at>UTC_TIMESTAMP() AS retained,ic.card_ciphertext IS NOT NULL AS card,ic.selfie_ciphertext IS NOT NULL AS selfie FROM assessment_identity_checks ic JOIN assessment_exam_sessions s ON s.invitation_id=ic.invitation_id WHERE s.id=%s",
+        "reference": "SELECT reference_ciphertext IS NOT NULL AND reference_expires_at>UTC_TIMESTAMP() AS available FROM assessment_monitoring_runs WHERE session_id=%s",
     }
     for name, query in queries.items():
         cursor.execute(query, (session_id,))
@@ -106,9 +105,9 @@ def _status(cursor, session_id):
 
 def assessments(page=1, search="", audit="all", company_id=None):
     from .retention import live_sql
-    where, params = ["a.ends_at<=(statement_timestamp() AT TIME ZONE 'UTC')", "a.company_id=%s",live_sql()], [company_id]
+    where, params = ["a.ends_at<=UTC_TIMESTAMP()", "a.company_id=%s",live_sql()], [company_id]
     if search:
-        where.append("(strpos(LOWER(a.title),LOWER(%s))>0 OR strpos(LOWER(COALESCE(a.internal_reference,'')),LOWER(%s))>0)")
+        where.append("(LOCATE(LOWER(%s),LOWER(a.title))>0 OR LOCATE(LOWER(%s),LOWER(COALESCE(a.internal_reference,'')))>0)")
         params.extend([search, search])
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
@@ -172,8 +171,8 @@ def case_report(assessment_id, invitation_id, auditor_id, source_ip):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         cursor.execute("""SELECT status,name_similarity,face_similarity,verification_method,
-                          (card_ciphertext IS NOT NULL AND evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC')) AS card_available,
-                          (selfie_ciphertext IS NOT NULL AND evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC')) AS selfie_available
+                          (card_ciphertext IS NOT NULL AND evidence_expires_at>UTC_TIMESTAMP()) AS card_available,
+                          (selfie_ciphertext IS NOT NULL AND evidence_expires_at>UTC_TIMESTAMP()) AS selfie_available
                           FROM assessment_identity_checks WHERE invitation_id=%s""", (invitation_id,))
         identity = cursor.fetchone()
         reviewer = None
@@ -224,10 +223,10 @@ def complete(assessment_id, invitation_id, auditor_id, expected_version, source_
         if not cursor.fetchone():
             cursor.execute("""INSERT INTO assessment_audit_completions
                               (session_id,review_revision,evidence_version,auditor_user_id,auditor_username,snapshot_json,created_at)
-                              VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                              VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                            (session['id'],snapshot['review_revision'],expected_version,auditor_id,auditor['username'],json.dumps(snapshot,default=str),now()))
         from .casework import actor
-        cursor.execute("INSERT INTO assessment_audit_outcomes(session_id,kind,reason,evidence_version,actor_id,actor_name,created_at) VALUES(%s,'audited',%s,%s,%s,%s,%s) RETURNING id",(session['id'],resolution_reason.strip(),expected_version,auditor_id,actor(cursor,auditor_id),now()))
+        cursor.execute("INSERT INTO assessment_audit_outcomes(session_id,kind,reason,evidence_version,actor_id,actor_name,created_at) VALUES(%s,'audited',%s,%s,%s,%s,%s)",(session['id'],resolution_reason.strip(),expected_version,auditor_id,actor(cursor,auditor_id),now()))
         _audit(cursor, session["id"], auditor_id, "mark_audited", source_ip)
         status, _ = _status(cursor, session["id"])
         connection.commit()
@@ -239,11 +238,11 @@ def identity_image(assessment_id, invitation_id, kind: Literal["card", "selfie"]
         cursor = connection.cursor(dictionary=True)
         session = _session(cursor, assessment_id, invitation_id)
         cursor.execute("""SELECT card_ciphertext,selfie_ciphertext FROM assessment_identity_checks
-                          WHERE invitation_id=%s AND status='passed' AND evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC')""", (invitation_id,))
+                          WHERE invitation_id=%s AND status='passed' AND evidence_expires_at>UTC_TIMESTAMP()""", (invitation_id,))
         row = cursor.fetchone()
         blob = row[f"{kind}_ciphertext"] if row else None
         if kind == "selfie" and not blob:
-            cursor.execute("SELECT reference_ciphertext FROM assessment_monitoring_runs WHERE session_id=%s AND reference_expires_at>(statement_timestamp() AT TIME ZONE 'UTC')", (session["id"],))
+            cursor.execute("SELECT reference_ciphertext FROM assessment_monitoring_runs WHERE session_id=%s AND reference_expires_at>UTC_TIMESTAMP()", (session["id"],))
             reference = cursor.fetchone()
             blob = reference["reference_ciphertext"] if reference else None
         if not blob:
@@ -261,7 +260,7 @@ def overview(company_id):
     queue, ready, waiting = [], [], []
     totals = {'ready_for_audit': 0, 'awaiting_review': 0, 'ready_to_publish': 0, 'published': 0}
     with database() as connection:
-        connection.isolation_level = IsolationLevel.REPEATABLE_READ
+        connection.start_transaction(isolation_level='REPEATABLE READ', consistent_snapshot=True)
         cursor = connection.cursor(dictionary=True)
         cursor.execute('SELECT name FROM companies WHERE id=%s AND is_active=TRUE', (company_id,))
         company = cursor.fetchone()
@@ -269,7 +268,7 @@ def overview(company_id):
             raise HTTPException(403, 'Company access unavailable')
         cursor.execute("""SELECT a.id,a.title,a.internal_reference,a.ends_at,
                           EXISTS(SELECT 1 FROM assessment_result_publications p WHERE p.assessment_id=a.id AND p.is_legacy=FALSE) AS published
-                          FROM assessments a WHERE a.company_id=%s AND a.ends_at<=(statement_timestamp() AT TIME ZONE 'UTC') AND NOT EXISTS(SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id=a.id AND rp.review_days IS NOT NULL AND (a.ends_at + rp.review_days * INTERVAL '1 day')<=(statement_timestamp() AT TIME ZONE 'UTC'))
+                          FROM assessments a WHERE a.company_id=%s AND a.ends_at<=UTC_TIMESTAMP() AND NOT EXISTS(SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id=a.id AND rp.review_days IS NOT NULL AND DATE_ADD(a.ends_at,INTERVAL rp.review_days DAY)<=UTC_TIMESTAMP())
                           ORDER BY a.ends_at,a.id""", (company_id,))
         exams = cursor.fetchall()
         for exam in exams:

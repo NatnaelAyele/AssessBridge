@@ -4,7 +4,7 @@ import json
 import secrets
 from datetime import datetime, timedelta, timezone
 
-import psycopg
+import mysql.connector
 from fastapi import HTTPException
 
 from .db import database
@@ -126,7 +126,7 @@ def read_exam_state(invitation_id: int, candidate_user_id: int, client_id=None) 
             connection.commit()
             cursor.close()
             return result
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Exam service temporarily unavailable") from exc
 
 
@@ -161,7 +161,7 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
                 cursor.execute(
                     """SELECT 1 FROM assessment_identity_checks
                        WHERE invitation_id = %s AND candidate_user_id = %s
-                         AND access_fingerprint = %s AND status = 'passed' AND evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AND verification_method=%s""",
+                         AND access_fingerprint = %s AND status = 'passed' AND evidence_expires_at>UTC_TIMESTAMP() AND verification_method=%s""",
                     (invitation_id, candidate_user_id, identity_fingerprint, method),
                 )
                 if cursor.fetchone() is None:
@@ -172,7 +172,7 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
                 cursor.execute(
                     """INSERT INTO assessment_exam_sessions
                        (invitation_id, candidate_user_id, auth_session_token_id, started_at, deadline_at, last_seen_at)
-                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
                     (invitation_id, candidate_user_id, auth_session_token_id, now, deadline, now),
                 )
                 cursor.execute("UPDATE assessment_exam_sessions SET client_instance_id=%s WHERE invitation_id=%s", (client_id, invitation_id))
@@ -182,14 +182,14 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
             if not ended_at(session):
                 cursor.execute(
                     """INSERT INTO assessment_recordings (session_id, storage_token, started_at)
-                       VALUES (%s, %s, %s) ON CONFLICT DO NOTHING RETURNING id""",
+                       VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE id = id""",
                     (session["id"], secrets.token_hex(16), session["started_at"]),
                 )
             result = serialize_state(cursor, exam, session, now)
             connection.commit()
             cursor.close()
             return result
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Exam service temporarily unavailable") from exc
 
 
@@ -237,14 +237,14 @@ def save_exam_answer(invitation_id: int, candidate_user_id: int, question_index:
             cursor.execute(
                 """INSERT INTO assessment_exam_answers (session_id, question_index, answer_json, saved_at)
                    VALUES (%s, %s, %s, %s)
-                   ON CONFLICT (session_id,question_index) DO UPDATE SET  answer_json = EXCLUDED.answer_json, saved_at = EXCLUDED.saved_at""",
+                   ON DUPLICATE KEY UPDATE answer_json = VALUES(answer_json), saved_at = VALUES(saved_at)""",
                 (session["id"], question_index, json.dumps(validated), now),
             )
             result = serialize_state(cursor, exam, session, now)
             connection.commit()
             cursor.close()
             return result
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Exam service temporarily unavailable") from exc
 
 
@@ -282,7 +282,7 @@ def navigate_exam(invitation_id: int, candidate_user_id: int, direction: str, cl
             connection.commit()
             cursor.close()
             return result
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Exam service temporarily unavailable") from exc
 
 
@@ -321,7 +321,7 @@ def submit_exam_attempt(invitation_id: int, candidate_user_id: int, client_id=No
             connection.commit()
             cursor.close()
             return result
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Exam service temporarily unavailable") from exc
 
 
@@ -331,7 +331,7 @@ def submit_expired_attempts() -> int:
         now = utc_now()
         cursor.execute("SELECT seen_at FROM exam_service_health WHERE id=1 FOR UPDATE")
         previous = cursor.fetchone()
-        cursor.execute('INSERT INTO exam_service_health (id,seen_at) VALUES (1,%s) ON CONFLICT (id) DO UPDATE SET  seen_at=EXCLUDED.seen_at', (now,))
+        cursor.execute("INSERT INTO exam_service_health (id,seen_at) VALUES (1,%s) ON DUPLICATE KEY UPDATE seen_at=VALUES(seen_at)", (now,))
         cursor.execute("SELECT * FROM assessment_exam_sessions WHERE submitted_at IS NULL AND disqualified_at IS NULL AND interrupted_at IS NULL FOR UPDATE")
         sessions = cursor.fetchall()
         for session in sessions:
@@ -390,5 +390,5 @@ def disqualify_exam_attempt(invitation_id: int, candidate_user_id: int) -> dict:
             connection.commit()
             cursor.close()
             return result
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Exam service temporarily unavailable") from exc

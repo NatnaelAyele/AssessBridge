@@ -127,7 +127,7 @@ def _advance(cursor, session_id, expected):
     if revision != expected:
         raise HTTPException(409, "This review changed in another tab. Reload the report before saving.")
     revision += 1
-    cursor.execute('INSERT INTO assessment_review_state (session_id,revision) VALUES (%s,%s) ON CONFLICT (session_id) DO UPDATE SET  revision=EXCLUDED.revision', (session_id, revision))
+    cursor.execute("INSERT INTO assessment_review_state (session_id,revision) VALUES (%s,%s) ON DUPLICATE KEY UPDATE revision=VALUES(revision)", (session_id, revision))
     return revision
 
 
@@ -177,7 +177,7 @@ def _decision(row):
 
 
 def _audit(cursor, session_id, employer_id, resource, source_ip):
-    cursor.execute('INSERT INTO assessment_review_access_audit (session_id,actor_user_id,resource,accessed_at,source_ip) VALUES (%s,%s,%s,%s,%s) RETURNING id',
+    cursor.execute("INSERT INTO assessment_review_access_audit (session_id,actor_user_id,resource,accessed_at,source_ip) VALUES (%s,%s,%s,%s,%s)",
                    (session_id, employer_id, resource, now(), source_ip))
 
 
@@ -203,7 +203,7 @@ def session_report(assessment_id, invitation_id, employer_id, source_ip=None, ac
         identity = cursor.fetchone()
         if identity:
             identity["checked_at"] = iso(identity["checked_at"])
-        cursor.execute("SELECT reference_ciphertext IS NOT NULL AND reference_expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AS available FROM assessment_monitoring_runs WHERE session_id=%s", (session["id"],))
+        cursor.execute("SELECT reference_ciphertext IS NOT NULL AND reference_expires_at>UTC_TIMESTAMP() AS available FROM assessment_monitoring_runs WHERE session_id=%s", (session["id"],))
         reference = cursor.fetchone()
         pending_evidence = evidence_pending(cursor, session)
         cursor.execute("SELECT id,event_type,occurred_at,details_json FROM assessment_connectivity_events WHERE session_id=%s ORDER BY occurred_at,id", (session["id"],))
@@ -304,7 +304,7 @@ def save_decision(assessment_id, invitation_id, employer_id, payload):
             """INSERT INTO assessment_review_decisions
                (session_id,revision,request_key,payload_hash,action,reason,final_score,previous_json,
                 grades_json,event_keys_json,reviewer_user_id,reviewer_username,created_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (session["id"], revision, str(payload.request_key), digest, payload.action, payload.reason,
              final_score, json.dumps(previous), json.dumps(grades), json.dumps(payload.event_keys), employer_id, reviewer, now()),
         )
@@ -336,7 +336,7 @@ def save_finding(assessment_id, invitation_id, employer_id, event_key, payload):
         cursor.execute(
             """INSERT INTO assessment_review_findings
                (session_id,event_key,revision,request_key,payload_hash,finding,reason,event_snapshot_json,
-                reviewer_user_id,reviewer_username,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                reviewer_user_id,reviewer_username,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (session["id"], event_key, revision, str(payload.request_key), digest, payload.assessment,
              payload.reason, json.dumps(event), employer_id, reviewer, now()),
         )
@@ -374,7 +374,7 @@ def save_connectivity_finding(assessment_id, invitation_id, employer_id, inciden
             """INSERT INTO assessment_connectivity_findings
                (session_id,incident_event_id,revision,request_key,payload_hash,finding,reason,incident_snapshot_json,
                 reviewer_user_id,reviewer_username,created_at)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (session["id"], incident_id, revision, str(payload.request_key), digest, payload.finding,
              payload.reason, json.dumps(incident), employer_id, reviewer, now()),
         )
@@ -386,7 +386,7 @@ def reference_photo(assessment_id, invitation_id, employer_id, source_ip):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)
         session = _load(cursor, assessment_id, invitation_id, employer_id)
-        cursor.execute("SELECT reference_ciphertext FROM assessment_monitoring_runs WHERE session_id=%s AND reference_expires_at>(statement_timestamp() AT TIME ZONE 'UTC')", (session["id"],))
+        cursor.execute("SELECT reference_ciphertext FROM assessment_monitoring_runs WHERE session_id=%s AND reference_expires_at>UTC_TIMESTAMP()", (session["id"],))
         row = cursor.fetchone()
         if not row or not row["reference_ciphertext"]:
             raise HTTPException(404, "The verified reference photo is unavailable or expired")
@@ -408,7 +408,7 @@ def candidate_cards(assessment_id, employer_id):
         cursor.execute(
             """SELECT s.*,i.id AS invitation_id,i.candidate_name,i.candidate_email,i.delivery_status
                FROM assessment_invitations i LEFT JOIN assessment_exam_sessions s ON s.invitation_id=i.id
-               WHERE i.assessment_id=%s AND i.removed_at IS NULL ORDER BY i.id FOR UPDATE OF i""", (assessment_id,))
+               WHERE i.assessment_id=%s AND i.removed_at IS NULL ORDER BY i.id FOR UPDATE""", (assessment_id,))
         rows = cursor.fetchall()
         cards = []
         for row in rows:
@@ -416,7 +416,7 @@ def candidate_cards(assessment_id, employer_id):
             if row["id"]:
                 finalize_if_expired(cursor, row, now())
                 latest = _latest(cursor, row["id"])
-                cursor.execute("SELECT COUNT(*) AS total,COALESCE(SUM((category='monitoring_quality')::integer),0) AS quality FROM assessment_monitoring_events WHERE session_id=%s", (row["id"],))
+                cursor.execute("SELECT COUNT(*) AS total,COALESCE(SUM(category='monitoring_quality'),0) AS quality FROM assessment_monitoring_events WHERE session_id=%s", (row["id"],))
                 counts = cursor.fetchone()
                 count, quality = counts["total"], int(counts["quality"])
                 scores = score_details(questions, _answers(cursor, row["id"]), unpack(latest["grades_json"]) if latest else {})

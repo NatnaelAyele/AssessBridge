@@ -52,7 +52,7 @@ def requirements(invitation,candidate,client,fingerprint,policy,method):
         c.execute('SELECT 1 FROM assessment_consents WHERE invitation_id=%s AND candidate_user_id=%s AND policy_version=%s',(invitation,candidate,policy));consent=bool(c.fetchone())
         from . import esignet
         method_expected=esignet.METHOD
-        c.execute("SELECT 1 FROM assessment_identity_checks WHERE invitation_id=%s AND candidate_user_id=%s AND status='passed' AND access_fingerprint=%s AND evidence_expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AND verification_method=%s",(invitation,candidate,fingerprint,method_expected));identity=bool(c.fetchone()) and esignet.enabled()
+        c.execute("SELECT 1 FROM assessment_identity_checks WHERE invitation_id=%s AND candidate_user_id=%s AND status='passed' AND access_fingerprint=%s AND evidence_expires_at>UTC_TIMESTAMP() AND verification_method=%s",(invitation,candidate,fingerprint,method_expected));identity=bool(c.fetchone()) and esignet.enabled()
     return {'instructions_version':instructions_version(exam),'consent_passed':consent,'identity_passed':identity,'seb_method':method,'seb_required':method!='not_required'}
 
 def confirm(invitation,candidate,client,fingerprint,policy,method,payload):
@@ -68,12 +68,12 @@ def confirm(invitation,candidate,client,fingerprint,policy,method,payload):
         checks={**payload.checks.model_dump(),'supported_platform':payload.platform!='unsupported','network':network,'monitoring_consent':state['consent_passed'],'identity':state['identity_passed']}
         acknowledgements=payload.acknowledgements.model_dump()
         passed=all(checks.values()) and all(acknowledgements.values())
-        c.execute("INSERT INTO assessment_readiness_records(invitation_id,candidate_user_id,client_instance_id,access_fingerprint,instructions_version,policy_version,checks_json,acknowledgements_json,seb_method,client_version,platform,passed,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,(statement_timestamp() AT TIME ZONE 'UTC')) RETURNING id",(invitation,candidate,client,fingerprint,payload.instructions_version,policy,json.dumps(checks),json.dumps(acknowledgements),method,payload.client_version or None,payload.platform,passed));db.commit()
+        c.execute('INSERT INTO assessment_readiness_records(invitation_id,candidate_user_id,client_instance_id,access_fingerprint,instructions_version,policy_version,checks_json,acknowledgements_json,seb_method,client_version,platform,passed,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(3))',(invitation,candidate,client,fingerprint,payload.instructions_version,policy,json.dumps(checks),json.dumps(acknowledgements),method,payload.client_version or None,payload.platform,passed));db.commit()
     return {'passed':passed,'checks':checks,'acknowledged':all(acknowledgements.values()),'valid_for_seconds':300}
 
 def require_complete(cursor,exam,candidate,client,fingerprint,policy):
     require_readiness(cursor,exam['invitation_id'],client)
-    cursor.execute("SELECT passed,instructions_version,policy_version FROM assessment_readiness_records WHERE invitation_id=%s AND candidate_user_id=%s AND client_instance_id=%s AND access_fingerprint=%s AND created_at>=(statement_timestamp() AT TIME ZONE 'UTC')-(5 * INTERVAL '1 minute') ORDER BY id DESC LIMIT 1",(exam['invitation_id'],candidate,client,fingerprint))
+    cursor.execute('SELECT passed,instructions_version,policy_version FROM assessment_readiness_records WHERE invitation_id=%s AND candidate_user_id=%s AND client_instance_id=%s AND access_fingerprint=%s AND created_at>=UTC_TIMESTAMP()-INTERVAL 5 MINUTE ORDER BY id DESC LIMIT 1',(exam['invitation_id'],candidate,client,fingerprint))
     row=cursor.fetchone()
     if not row or not row['passed'] or row['instructions_version']!=instructions_version(exam) or row['policy_version']!=policy:raise HTTPException(428,'Complete the readiness checks and acknowledge the exam instructions before starting')
 
@@ -92,14 +92,14 @@ def record_events(invitation,candidate,client,payload):
             # Device clocks may be wrong. Receipt time is the authoritative server time.
             if at.year<1000:raise HTTPException(422,'Invalid event time')
             c.execute('SELECT event_type,client_occurred_at,client_instance_id FROM assessment_environment_events WHERE invitation_id=%s AND request_key=%s',(invitation,str(item.request_key)));old=c.fetchone()
-            # The readiness record stores milliseconds; compare at the same precision on retries.
+            # MySQL stores milliseconds; compare at the same precision on retries.
             at=at.replace(microsecond=at.microsecond//1000*1000)
             if old:
                 if old['event_type']!=item.event_type or old['client_occurred_at']!=at or old['client_instance_id']!=client:raise HTTPException(409,'Event identifier already used')
                 continue
             if total>=10000:raise HTTPException(429,'Event limit reached for this attempt')
             total+=1
-            c.execute("INSERT INTO assessment_environment_events(invitation_id,candidate_user_id,client_instance_id,request_key,event_type,client_occurred_at,received_at) VALUES(%s,%s,%s,%s,%s,%s,(statement_timestamp() AT TIME ZONE 'UTC')) RETURNING id",(invitation,candidate,client,str(item.request_key),item.event_type,at))
+            c.execute('INSERT INTO assessment_environment_events(invitation_id,candidate_user_id,client_instance_id,request_key,event_type,client_occurred_at,received_at) VALUES(%s,%s,%s,%s,%s,%s,UTC_TIMESTAMP(3))',(invitation,candidate,client,str(item.request_key),item.event_type,at))
         db.commit()
     return {'recorded':len(payload.events),'source':'browser_page','automatic_disqualification':False}
 

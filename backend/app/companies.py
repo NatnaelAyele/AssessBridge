@@ -64,7 +64,7 @@ def mail(email,token,kind,company):
     except Exception as exc: raise HTTPException(503,'Could not send the email. Try again.') from exc
 
 def event(cur,company,actor,kind,target=None,invitation=None):
-    cur.execute('INSERT INTO company_account_events(company_id,actor_user_id,event_type,target_user_id,invitation_id,expires_at) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id',(company,actor,kind,target,invitation,datetime.now(timezone.utc).replace(tzinfo=None)+timedelta(days=SECURITY_AUDIT_RETENTION_DAYS) if SECURITY_AUDIT_RETENTION_DAYS else None))
+    cur.execute('INSERT INTO company_account_events(company_id,actor_user_id,event_type,target_user_id,invitation_id,expires_at) VALUES(%s,%s,%s,%s,%s,%s)',(company,actor,kind,target,invitation,datetime.now(timezone.utc).replace(tzinfo=None)+timedelta(days=SECURITY_AUDIT_RETENTION_DAYS) if SECURITY_AUDIT_RETENTION_DAYS else None))
 
 def membership(user_id):
     with database() as db:
@@ -95,13 +95,13 @@ def register(payload):
         existing=c.fetchone()
         if existing:
             if existing[2] and verify_password(payload.password,existing[1]):
-                c.execute("UPDATE company_registration_verifications SET token_hash=%s,expires_at=(statement_timestamp() AT TIME ZONE 'UTC')+(48 * INTERVAL '1 hour'),sent_at=(statement_timestamp() AT TIME ZONE 'UTC') WHERE user_id=%s",(digest(token),existing[0]))
+                c.execute('UPDATE company_registration_verifications SET token_hash=%s,expires_at=UTC_TIMESTAMP()+INTERVAL 48 HOUR,sent_at=UTC_TIMESTAMP() WHERE user_id=%s',(digest(token),existing[0]))
                 mail(payload.email,token,'verify',payload.company);db.commit()
                 return {'message':'Check your email to activate your company.'}
             raise HTTPException(409,'This email is already registered. Sign in with that account or use another email.')
-        c.execute('INSERT INTO companies(name) VALUES(%s) RETURNING id',(payload.company.strip(),));company=c.lastrowid
-        c.execute("INSERT INTO users(username,email,password_hash,role,is_active,company_id,full_name) VALUES(%s,%s,%s,'company_admin',FALSE,%s,%s) RETURNING id",('staff_'+secrets.token_hex(12),payload.email,hash_password(payload.password),company,payload.name.strip()));user=c.lastrowid
-        c.execute("INSERT INTO company_registration_verifications(user_id,company_id,token_hash,expires_at,sent_at) VALUES(%s,%s,%s,(statement_timestamp() AT TIME ZONE 'UTC')+(48 * INTERVAL '1 hour'),(statement_timestamp() AT TIME ZONE 'UTC'))",(user,company,digest(token)))
+        c.execute('INSERT INTO companies(name) VALUES(%s)',(payload.company.strip(),));company=c.lastrowid
+        c.execute("INSERT INTO users(username,email,password_hash,role,is_active,company_id,full_name) VALUES(%s,%s,%s,'company_admin',FALSE,%s,%s)",('staff_'+secrets.token_hex(12),payload.email,hash_password(payload.password),company,payload.name.strip()));user=c.lastrowid
+        c.execute('INSERT INTO company_registration_verifications(user_id,company_id,token_hash,expires_at,sent_at) VALUES(%s,%s,%s,UTC_TIMESTAMP()+INTERVAL 48 HOUR,UTC_TIMESTAMP())',(user,company,digest(token)))
         mail(payload.email,token,'verify',payload.company)
         event(c,company,user,'registration');db.commit()
     return {'message':'Check your email to activate your company.'}
@@ -109,7 +109,7 @@ def register(payload):
 def verify(token):
     with database() as db:
         c=db.cursor(dictionary=True)
-        c.execute("SELECT * FROM company_registration_verifications WHERE token_hash=%s AND expires_at>(statement_timestamp() AT TIME ZONE 'UTC') FOR UPDATE",(digest(token),));r=c.fetchone()
+        c.execute('SELECT * FROM company_registration_verifications WHERE token_hash=%s AND expires_at>UTC_TIMESTAMP() FOR UPDATE',(digest(token),));r=c.fetchone()
         if not r:raise HTTPException(400,'This link is invalid or expired.')
         c.execute('UPDATE companies SET is_active=TRUE WHERE id=%s',(r['company_id'],))
         c.execute('UPDATE users SET is_active=TRUE WHERE id=%s',(r['user_id'],))
@@ -123,7 +123,7 @@ def staff_list(user_id):
         c=db.cursor(dictionary=True)
         c.execute('SELECT id,name FROM companies WHERE id=%s',(m['company_id'],));co=c.fetchone()
         c.execute('SELECT id,full_name,email,role,is_active FROM users WHERE company_id=%s ORDER BY id',(m['company_id'],));users=c.fetchall()
-        c.execute("SELECT id,full_name,email,role,accepted_at,revoked_at,expires_at,expires_at<=(statement_timestamp() AT TIME ZONE 'UTC') AS expired FROM company_staff_invitations WHERE company_id=%s ORDER BY id DESC",(m['company_id'],));invitations=c.fetchall()
+        c.execute("SELECT id,full_name,email,role,accepted_at,revoked_at,expires_at,expires_at<=UTC_TIMESTAMP() AS expired FROM company_staff_invitations WHERE company_id=%s ORDER BY id DESC",(m['company_id'],));invitations=c.fetchall()
     return {'company':co,'users':users,'invitations':invitations}
 
 def invite(user_id,payload):
@@ -133,27 +133,27 @@ def invite(user_id,payload):
         c.execute('SELECT name FROM companies WHERE id=%s FOR UPDATE',(m['company_id'],));co=c.fetchone()
         c.execute('SELECT id FROM users WHERE email=%s',(payload.email,))
         if c.fetchone():raise HTTPException(409,'This email cannot be invited. Use another work email.')
-        c.execute("UPDATE company_staff_invitations SET revoked_at=(statement_timestamp() AT TIME ZONE 'UTC') WHERE company_id=%s AND email=%s AND accepted_at IS NULL AND revoked_at IS NULL",(m['company_id'],payload.email))
-        c.execute("INSERT INTO company_staff_invitations(company_id,email,full_name,role,token_hash,expires_at,invited_by,sent_at) VALUES(%s,%s,%s,%s,%s,(statement_timestamp() AT TIME ZONE 'UTC')+(48 * INTERVAL '1 hour'),%s,(statement_timestamp() AT TIME ZONE 'UTC')) RETURNING id",(m['company_id'],payload.email,payload.name.strip(),payload.role,digest(token),user_id));ident=c.lastrowid
+        c.execute('UPDATE company_staff_invitations SET revoked_at=UTC_TIMESTAMP() WHERE company_id=%s AND email=%s AND accepted_at IS NULL AND revoked_at IS NULL',(m['company_id'],payload.email))
+        c.execute('INSERT INTO company_staff_invitations(company_id,email,full_name,role,token_hash,expires_at,invited_by,sent_at) VALUES(%s,%s,%s,%s,%s,UTC_TIMESTAMP()+INTERVAL 48 HOUR,%s,UTC_TIMESTAMP())',(m['company_id'],payload.email,payload.name.strip(),payload.role,digest(token),user_id));ident=c.lastrowid
         mail(payload.email,token,'accept',co['name']);event(c,m['company_id'],user_id,'staff_invited',invitation=ident);db.commit()
     return {'message':'Invitation sent.'}
 
 def invitation(token):
     with database() as db:
         c=db.cursor(dictionary=True)
-        c.execute("SELECT i.email,i.full_name,i.role,co.name AS company FROM company_staff_invitations i JOIN companies co ON co.id=i.company_id WHERE token_hash=%s AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AND co.is_active=TRUE",(digest(token),));r=c.fetchone()
+        c.execute('SELECT i.email,i.full_name,i.role,co.name AS company FROM company_staff_invitations i JOIN companies co ON co.id=i.company_id WHERE token_hash=%s AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP() AND co.is_active=TRUE',(digest(token),));r=c.fetchone()
     if not r:raise HTTPException(400,'This invitation is invalid or expired. Ask your administrator for a new invitation.')
     return r
 
 def accept(payload):
     with database() as db:
         c=db.cursor(dictionary=True)
-        c.execute("SELECT i.* FROM company_staff_invitations i JOIN companies co ON co.id=i.company_id WHERE token_hash=%s AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>(statement_timestamp() AT TIME ZONE 'UTC') AND co.is_active=TRUE FOR UPDATE",(digest(payload.token),));r=c.fetchone()
+        c.execute('SELECT i.* FROM company_staff_invitations i JOIN companies co ON co.id=i.company_id WHERE token_hash=%s AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP() AND co.is_active=TRUE FOR UPDATE',(digest(payload.token),));r=c.fetchone()
         if not r:raise HTTPException(400,'This invitation is invalid or expired.')
         c.execute('SELECT id FROM users WHERE email=%s',(r['email'],))
         if c.fetchone():raise HTTPException(409,'This email is already registered.')
-        c.execute('INSERT INTO users(username,email,password_hash,role,is_active,company_id,full_name) VALUES(%s,%s,%s,%s,TRUE,%s,%s) RETURNING id',('staff_'+secrets.token_hex(12),r['email'],hash_password(payload.password),r['role'],r['company_id'],r['full_name']));uid=c.lastrowid
-        c.execute("UPDATE company_staff_invitations SET accepted_at=(statement_timestamp() AT TIME ZONE 'UTC'),accepted_by=%s WHERE id=%s",(uid,r['id']))
+        c.execute('INSERT INTO users(username,email,password_hash,role,is_active,company_id,full_name) VALUES(%s,%s,%s,%s,TRUE,%s,%s)',('staff_'+secrets.token_hex(12),r['email'],hash_password(payload.password),r['role'],r['company_id'],r['full_name']));uid=c.lastrowid
+        c.execute('UPDATE company_staff_invitations SET accepted_at=UTC_TIMESTAMP(),accepted_by=%s WHERE id=%s',(uid,r['id']))
         event(c,r['company_id'],uid,'invitation_accepted',uid,r['id']);db.commit()
     return {'message':'Account created. Sign in to continue.'}
 
@@ -174,7 +174,7 @@ def deactivate(actor,target):
 def revoke(actor,ident):
     m=membership(actor)
     with database() as db:
-        c=db.cursor();c.execute("UPDATE company_staff_invitations SET revoked_at=(statement_timestamp() AT TIME ZONE 'UTC') WHERE id=%s AND company_id=%s AND accepted_at IS NULL AND revoked_at IS NULL",(ident,m['company_id']))
+        c=db.cursor();c.execute('UPDATE company_staff_invitations SET revoked_at=UTC_TIMESTAMP() WHERE id=%s AND company_id=%s AND accepted_at IS NULL AND revoked_at IS NULL',(ident,m['company_id']))
         if not c.rowcount:raise HTTPException(404,'Pending invitation not found')
         event(c,m['company_id'],actor,'invitation_revoked',invitation=ident);db.commit()
     return {'message':'Invitation revoked.'}
@@ -208,7 +208,7 @@ def request_reset(payload):
                      WHERE u.email=%s AND u.is_active=TRUE AND (u.role='candidate'
                      OR (u.role IN ('company_admin','employer_personnel','auditor') AND co.is_active=TRUE))""",(payload.email,));r=c.fetchone()
         if r:
-            c.execute("INSERT INTO company_password_resets(user_id,token_hash,expires_at) VALUES(%s,%s,(statement_timestamp() AT TIME ZONE 'UTC')+(48 * INTERVAL '1 hour')) ON CONFLICT (user_id) DO UPDATE SET  token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at",(r['id'],digest(token)))
+            c.execute('INSERT INTO company_password_resets(user_id,token_hash,expires_at) VALUES(%s,%s,UTC_TIMESTAMP()+INTERVAL 48 HOUR) ON DUPLICATE KEY UPDATE token_hash=VALUES(token_hash),expires_at=VALUES(expires_at)',(r['id'],digest(token)))
             mail(payload.email,token,'reset','');db.commit()
     return {'message':'If an active account uses this email, a reset link has been sent.'}
 
@@ -216,9 +216,9 @@ def reset_password(payload):
     with database() as db:
         c=db.cursor(dictionary=True)
         c.execute("""SELECT r.user_id,u.company_id,u.role FROM company_password_resets r JOIN users u ON u.id=r.user_id
-                     LEFT JOIN companies co ON co.id=u.company_id WHERE r.token_hash=%s AND r.expires_at>(statement_timestamp() AT TIME ZONE 'UTC')
+                     LEFT JOIN companies co ON co.id=u.company_id WHERE r.token_hash=%s AND r.expires_at>UTC_TIMESTAMP()
                      AND u.is_active=TRUE AND (u.role='candidate'
-                     OR (u.role IN ('company_admin','employer_personnel','auditor') AND co.is_active=TRUE)) FOR UPDATE OF r,u""",(digest(payload.token),));r=c.fetchone()
+                     OR (u.role IN ('company_admin','employer_personnel','auditor') AND co.is_active=TRUE)) FOR UPDATE""",(digest(payload.token),));r=c.fetchone()
         if not r:raise HTTPException(400,'This reset link is invalid or expired.')
         c.execute('UPDATE users SET password_hash=%s WHERE id=%s',(hash_password(payload.password),r['user_id']))
         c.execute('DELETE FROM auth_sessions WHERE user_id=%s',(r['user_id'],));c.execute('DELETE FROM company_password_resets WHERE user_id=%s',(r['user_id'],))

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
-import psycopg
+import mysql.connector
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -147,14 +147,14 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
     where = ["a.company_id = (SELECT company_id FROM users WHERE id=%s)"]
     parameters: list = [employer_id]
     if search:
-        where.append("(strpos(LOWER(a.title), LOWER(%s)) > 0 OR strpos(LOWER(a.internal_reference), LOWER(%s)) > 0)")
+        where.append("(LOCATE(LOWER(%s), LOWER(a.title)) > 0 OR LOCATE(LOWER(%s), LOWER(a.internal_reference)) > 0)")
         parameters.extend((search, search))
     if status == "scheduled":
-        where.append("a.starts_at > (statement_timestamp() AT TIME ZONE 'UTC')")
+        where.append("a.starts_at > UTC_TIMESTAMP()")
     elif status == "open":
-        where.append("a.starts_at <= (statement_timestamp() AT TIME ZONE 'UTC') AND a.ends_at > (statement_timestamp() AT TIME ZONE 'UTC')")
+        where.append("a.starts_at <= UTC_TIMESTAMP() AND a.ends_at > UTC_TIMESTAMP()")
     elif status == "closed":
-        where.append("a.ends_at <= (statement_timestamp() AT TIME ZONE 'UTC')")
+        where.append("a.ends_at <= UTC_TIMESTAMP()")
     from .retention import live_sql
     where.append(live_sql())
     having = []
@@ -167,27 +167,26 @@ def list_assessments(employer_id: int, page: int, search: str = "", status: str 
             having.append(f"{field} <= %s")
             parameters.append(maximum)
     query = (
-        "SELECT a.id, a.title, a.internal_reference, a.starts_at, a.ends_at, a.created_at, "
-        "jsonb_array_length(a.questions_json) AS question_count, COUNT(i.id) AS candidate_count, "
-        "COALESCE(SUM((i.delivery_status = 'sent')::integer), 0) AS sent_count, "
-        "COALESCE(SUM((i.delivery_status = 'failed')::integer), 0) AS failed_count "
-        "FROM assessments a LEFT JOIN assessment_invitations i "
-        "ON i.assessment_id = a.id AND i.removed_at IS NULL "
+        "SELECT a.id, a.title, a.internal_reference, a.starts_at, a.ends_at, "
+        "JSON_LENGTH(a.questions_json) AS question_count, COUNT(i.id) AS candidate_count, "
+        "COALESCE(SUM(i.delivery_status = 'sent'), 0) AS sent_count, "
+        "COALESCE(SUM(i.delivery_status = 'failed'), 0) AS failed_count "
+        "FROM assessments a LEFT JOIN assessment_invitations i ON i.assessment_id = a.id AND i.removed_at IS NULL "
         f"WHERE {' AND '.join(where)} GROUP BY a.id"
+        + (f" HAVING {' AND '.join(having)}" if having else "")
     )
-    query = f"SELECT * FROM ({query}) AS matched" + (f" WHERE {' AND '.join(having)}" if having else "")
     try:
         with database() as connection:
             cursor = connection.cursor(dictionary=True)
             cursor.execute(f"SELECT COUNT(*) AS total FROM ({query}) AS filtered", tuple(parameters))
             total = cursor.fetchone()["total"]
             cursor.execute(
-                f"{query} ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
+                f"{query} ORDER BY a.created_at DESC, a.id DESC LIMIT %s OFFSET %s",
                 (*parameters, page_size, (page - 1) * page_size),
             )
             rows = cursor.fetchall()
             cursor.close()
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Service temporarily unavailable") from exc
     return {
         "page": page, "page_size": page_size, "total": total,
@@ -210,7 +209,7 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
             cursor = connection.cursor(dictionary=True)
             cursor.execute(
                 """SELECT id, title, description, internal_reference, duration_minutes,
-                          starts_at, ends_at, identity_policy, questions_json, jsonb_array_length(questions_json) AS question_count,
+                          starts_at, ends_at, identity_policy, questions_json, JSON_LENGTH(questions_json) AS question_count,
                           EXISTS(SELECT 1 FROM assessment_result_publications p WHERE p.assessment_id=assessments.id AND p.is_legacy=FALSE) AS published
                    FROM assessments WHERE id = %s AND company_id = (SELECT company_id FROM users WHERE id=%s)""",
                 (assessment_id, employer_id),
@@ -233,13 +232,13 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
                    LEFT JOIN assessment_exam_sessions s ON s.invitation_id = i.id
                    LEFT JOIN assessment_identity_checks ic ON ic.invitation_id = i.id
                    LEFT JOIN assessment_recordings r ON r.session_id = s.id
-                     AND r.status <> 'deleted' AND (r.expires_at IS NULL OR r.expires_at > (statement_timestamp() AT TIME ZONE 'UTC'))
+                     AND r.status <> 'deleted' AND (r.expires_at IS NULL OR r.expires_at > UTC_TIMESTAMP())
                    LEFT JOIN (
                        SELECT recording_id, SUM(total_bytes) AS total_bytes
                        FROM assessment_recording_parts GROUP BY recording_id
                    ) media ON media.recording_id = r.id
                    LEFT JOIN (
-                       SELECT session_id, SUM((jsonb_typeof(answer_json) <> 'null')::integer) AS answered_count
+                       SELECT session_id, SUM(JSON_TYPE(answer_json) <> 'NULL') AS answered_count
                        FROM assessment_exam_answers GROUP BY session_id
                    ) a ON a.session_id = s.id
                    WHERE i.assessment_id = %s AND i.removed_at IS NULL ORDER BY i.id""",
@@ -247,7 +246,7 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
             )
             candidates = cursor.fetchall()
             cursor.close()
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(status_code=503, detail="Service temporarily unavailable") from exc
     return {
         "id": assessment["id"], "title": assessment["title"],
@@ -331,8 +330,6 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
     try:
         with database() as connection:
             cursor = connection.cursor(dictionary=True)
-            # Serialize retries even before the assessment row exists.
-            cursor.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (str(payload.request_key),))
             cursor.execute(
                 "SELECT id, employer_user_id, payload_hash FROM assessments WHERE request_key = %s FOR UPDATE",
                 (str(payload.request_key),),
@@ -354,7 +351,7 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                     """INSERT INTO assessments
                        (employer_user_id, request_key, payload_hash, title, description, internal_reference,
                         duration_minutes, rules_text, identity_policy, questions_json, starts_at, ends_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         employer_id, str(payload.request_key), payload_hash, payload.title.strip(),
                         payload.description, payload.internal_reference, payload.duration_minutes,
@@ -384,19 +381,21 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                             )
                         else:
                             seb_key, seb_file = None, None
-                        cursor.execute(
-                            """INSERT INTO assessment_invitations
-                               (assessment_id, candidate_name, candidate_email, candidate_user_id, exam_username, password_hash, seb_config_key, seb_config_blob)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                               ON CONFLICT (exam_username) DO NOTHING RETURNING id""",
-                            (assessment_id, candidate.name.strip(), candidate.email, account["id"] if account else None, exam_username, hash_password(new_exam_password()), seb_key, seb_file),
-                        )
-                        if cursor.lastrowid is not None:
+                        try:
+                            cursor.execute(
+                                """INSERT INTO assessment_invitations
+                                   (assessment_id, candidate_name, candidate_email, candidate_user_id, exam_username, password_hash, seb_config_key, seb_config_blob)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                                (assessment_id, candidate.name.strip(), candidate.email, account["id"] if account else None, exam_username, hash_password(new_exam_password()), seb_key, seb_file),
+                            )
                             break
+                        except mysql.connector.IntegrityError as exc:
+                            if exc.errno != 1062 or "exam_username" not in exc.msg:
+                                raise
                     else:
                         raise HTTPException(status_code=503, detail="Could not allocate an exam username")
                 cursor.execute(
-                    "INSERT INTO assessment_activity (assessment_id, actor_user_id, event_type) VALUES (%s, %s, 'assessment_created') RETURNING id",
+                    "INSERT INTO assessment_activity (assessment_id, actor_user_id, event_type) VALUES (%s, %s, 'assessment_created')",
                     (assessment_id, employer_id),
                 )
             # The assessment and all credentials remain uncommitted until every
@@ -425,12 +424,12 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                     return {'saved':False,'assessment_id':None,'sent':index,'failed':1,
                             'pending':len(unsent)-index-1,'cancelled_deliveries':index,
                             'failed_email':candidate['candidate_email']}
-                cursor.execute("UPDATE assessment_invitations SET delivery_status='sent',sent_at=(statement_timestamp() AT TIME ZONE 'UTC') WHERE id=%s",(candidate['id'],))
-                cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'invitation_sent',%s) RETURNING id",
+                cursor.execute("UPDATE assessment_invitations SET delivery_status='sent',sent_at=UTC_TIMESTAMP() WHERE id=%s",(candidate['id'],))
+                cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'invitation_sent',%s)",
                                (assessment_id,employer_id,candidate['id']))
             connection.commit()
             cursor.close()
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         # A lost database acknowledgement can be ambiguous. Repeating the same
         # request key checks the committed result before any new emails are sent.
         raise HTTPException(status_code=503, detail="Service temporarily unavailable") from exc
@@ -455,9 +454,9 @@ def remove_candidate_assignment(assessment_id:int, invitation_id:int, actor_id:i
                 return {'removed':True,'already_removed':True}
             cursor.execute('SELECT id FROM assessment_exam_sessions WHERE invitation_id=%s FOR UPDATE',(invitation_id,))
             if cursor.fetchone():raise HTTPException(409,'This candidate has already started the assessment and cannot be removed.')
-            cursor.execute("UPDATE assessment_invitations SET removed_at=(statement_timestamp() AT TIME ZONE 'UTC'),removed_by=%s,delivery_status='revoked' WHERE id=%s",(actor_id,invitation_id))
-            cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'candidate_removed',%s) RETURNING id",(assessment_id,actor_id,invitation_id))
+            cursor.execute("UPDATE assessment_invitations SET removed_at=UTC_TIMESTAMP(),removed_by=%s,delivery_status='revoked' WHERE id=%s",(actor_id,invitation_id))
+            cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'candidate_removed',%s)",(assessment_id,actor_id,invitation_id))
             connection.commit()
         return {'removed':True,'already_removed':False}
-    except psycopg.Error as exc:
+    except mysql.connector.Error as exc:
         raise HTTPException(503,'Could not remove this candidate. Try again.') from exc
