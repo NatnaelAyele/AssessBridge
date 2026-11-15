@@ -111,7 +111,7 @@ def prepare(issuer, app_url):
     callback = app_url + '/identity/esignet/callback'
     name = json.dumps({'eng': 'AssessBridge demo'})
     fields = {'id': client, 'name': name, 'rp_id': 'assessbridge-demo',
-              'logo_uri': app_url + '/favicon.ico', 'redirect_uris': json.dumps([callback]),
+              'logo_uri': app_url + '/assets/branding/mark-blue.svg', 'redirect_uris': json.dumps([callback]),
               'claims': json.dumps(['name']), 'acr_values': json.dumps(['mosip:idp:acr:generated-code']),
               'public_key': json.dumps(jwk, sort_keys=True), 'public_key_hash': hashlib.sha256(json.dumps(jwk, sort_keys=True).encode()).hexdigest(),
               'grant_types': json.dumps(['authorization_code']), 'auth_methods': json.dumps(['private_key_jwt']),

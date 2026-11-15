@@ -1,0 +1,31 @@
+.launch-shell { max-width: 780px; padding-top: 28px; }
+.launch-heading { margin: 48px 0 26px; }
+.launch-heading h1 { font-size: clamp(28px, 4vw, 36px); line-height: 1.2; }
+.launch-heading > p:last-child { margin: 12px 0 0; font-size: 15px; }
+.launch-card { max-width: none; padding: 0; overflow: hidden; }
+.launch-step { display: flex; gap: 18px; padding: 30px 32px; }
+.launch-step + .launch-step { border-top: 1px solid #e1e9f3; }
+.launch-number { display: grid; flex: 0 0 32px; height: 32px; place-items: center; border: 1px solid #cce0f8; border-radius: 50%; background: #eef5ff; color: #0b58ad; font-size: 13px; font-weight: 700; }
+.launch-step-content { min-width: 0; flex: 1; }
+.launch-step h2 { margin: 3px 0 10px; font-size: 20px; letter-spacing: -.025em; }
+.launch-step p { margin: 0; color: #526985; font-size: 14px; line-height: 1.65; }
+.launch-card a.primary-button, .launch-card a.secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 46px; text-decoration: none; font-size: 14px; }
+.launch-account { margin-top: 18px; }
+.launch-step .launch-hint { margin-top: 12px; color: #6a7c93; font-size: 12px; }
+.launch-password { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; padding: 13px 15px; border: 1px solid #dde8f5; border-radius: 8px; background: #f7faff; color: #3d6391; }
+.launch-password svg { flex: 0 0 18px; margin-top: 2px; }
+.launch-password p { font-size: 13px; }
+.launch-password strong { font-weight: 700; color: #294b73; }
+.launch-help { margin-top: 20px; padding-top: 18px; border-top: 1px solid #e7edf5; }
+.launch-help summary { width: fit-content; color: #526985; font-size: 13px; line-height: 1.6; cursor: pointer; }
+.launch-help p { margin-top: 12px; font-size: 13px; }
+.launch-help a { display: inline-block; margin-top: 9px; font-size: 13px; text-underline-offset: 3px; }
+.launch-shell a:focus-visible, .launch-help summary:focus-visible { outline: 3px solid #96c4fc; outline-offset: 4px; border-radius: 5px; }
+@media (max-width: 560px) {
+  .launch-shell { padding: 24px 18px 48px; }
+  .launch-heading { margin-top: 34px; }
+  .launch-step { padding: 23px 20px; gap: 12px; }
+  .launch-number { flex-basis: 28px; height: 28px; }
+  .launch-step h2 { font-size: 18px; }
+  .launch-card a.primary-button, .launch-card a.secondary-button { width: 100%; padding: 11px 12px; line-height: 1.45; }
+}
