@@ -19,7 +19,7 @@ from .security import hash_password
 
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-PROHIBITED_ITEMS = ("Mobile phone", "Additional person", "Shade glass", "Books", "Tablet", "Calculator")
+PROHIBITED_ITEMS = ("Mobile phone", "Additional person", "Books", "Tablet", "Calculator")
 EXAM_USERNAME_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
@@ -92,7 +92,7 @@ class SendInvitationsRequest(BaseModel):
     internal_reference: str = Field(default="", max_length=60)
     duration_minutes: int = Field(ge=1, le=480)
     rules_text: str = Field(default="", max_length=10000)
-    identity_policy: str = Field(default="Fayda ID", max_length=10000)
+    identity_policy: str = Field(default="Fayda demo (eSignet)", max_length=100)
     questions: list[QuestionDraft] = Field(min_length=1, max_length=200)
     candidates: list[CandidateDraft] = Field(min_length=1, max_length=200)
     starts_at: datetime
@@ -107,12 +107,10 @@ class SendInvitationsRequest(BaseModel):
     @classmethod
     def valid_identity_documents(cls, value: str) -> str:
         from . import esignet
-        if value == esignet.POLICY:
-            if not esignet.enabled():
-                raise ValueError('Demo identity authentication is disabled')
-            return value
-        if value not in {"Fayda ID", "Other ID cards"}:
-            raise ValueError("Choose Fayda ID card or Other ID cards")
+        if value != esignet.POLICY:
+            raise ValueError("Identity verification uses eSignet simulation")
+        if not esignet.enabled():
+            raise ValueError("eSignet simulation is disabled")
         return value
 
     @model_validator(mode="after")
@@ -253,7 +251,7 @@ def assessment_detail(assessment_id: int, employer_id: int) -> dict:
     return {
         "id": assessment["id"], "title": assessment["title"],
         "description": assessment["description"], "internal_reference": assessment["internal_reference"],
-        "identity_policy": assessment["identity_policy"] or "Fayda ID",
+        "identity_policy": assessment["identity_policy"] or "Fayda demo (eSignet)",
         "duration_minutes": assessment["duration_minutes"], "question_count": assessment["question_count"],
         "published": bool(assessment.get("published")),
         "questions": json.loads(assessment["questions_json"]) if isinstance(assessment["questions_json"], str) else assessment["questions_json"],
@@ -345,6 +343,9 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                 cursor.execute("SELECT id FROM assessment_result_publications WHERE assessment_id=%s AND is_legacy=FALSE LIMIT 1", (assessment_id,))
                 if cursor.fetchone():
                     raise HTTPException(409, "Results are published. Invitations cannot be changed.")
+                cursor.execute("SELECT id FROM assessment_invitations WHERE assessment_id=%s AND removed_at IS NULL AND delivery_status IN ('pending','failed') LIMIT 1",(assessment_id,))
+                if cursor.fetchone():
+                    raise HTTPException(409,"This assessment was saved previously. Open Assessment detail to check its invitations.")
             else:
                 cursor.execute(
                     """INSERT INTO assessments
@@ -397,55 +398,44 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                     "INSERT INTO assessment_activity (assessment_id, actor_user_id, event_type) VALUES (%s, %s, 'assessment_created')",
                     (assessment_id, employer_id),
                 )
-                connection.commit()
+            # The assessment and all credentials remain uncommitted until every
+            # email is accepted by SMTP. A failed batch leaves no usable access.
+            cursor.execute("""SELECT id,candidate_name,candidate_email,candidate_user_id,exam_username
+                              FROM assessment_invitations WHERE assessment_id=%s AND removed_at IS NULL
+                              AND delivery_status IN ('pending','failed') ORDER BY id""",(assessment_id,))
+            unsent=cursor.fetchall()
+            for index,candidate in enumerate(unsent):
+                password=new_exam_password()
+                cursor.execute('UPDATE assessment_invitations SET password_hash=%s WHERE id=%s',
+                               (hash_password(password),candidate['id']))
+                try:
+                    send_calendar_invitation(
+                        settings=mail_settings,assessment_id=assessment_id,invitation_id=candidate['id'],
+                        title=payload.title.strip(),duration_minutes=payload.duration_minutes,
+                        start=payload.starts_at,end=payload.ends_at,candidate_name=candidate['candidate_name'],
+                        candidate_email=candidate['candidate_email'],username=candidate['exam_username'],password=password,
+                        seb_config_password=config_password_for(candidate['exam_username']),
+                        seb_launch_url=f"{SEB_BASE_URL}/seb/launch/{candidate['exam_username']}",
+                        seb_quit_password=quit_password_for(candidate['exam_username']),
+                        registered=candidate['candidate_user_id'] is not None,
+                    )
+                except (OSError,smtplib.SMTPException):
+                    connection.rollback()
+                    return {'saved':False,'assessment_id':None,'sent':index,'failed':1,
+                            'pending':len(unsent)-index-1,'cancelled_deliveries':index,
+                            'failed_email':candidate['candidate_email']}
+                cursor.execute("UPDATE assessment_invitations SET delivery_status='sent',sent_at=UTC_TIMESTAMP() WHERE id=%s",(candidate['id'],))
+                cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'invitation_sent',%s)",
+                               (assessment_id,employer_id,candidate['id']))
+            connection.commit()
             cursor.close()
     except mysql.connector.Error as exc:
+        # A lost database acknowledgement can be ambiguous. Repeating the same
+        # request key checks the committed result before any new emails are sent.
         raise HTTPException(status_code=503, detail="Service temporarily unavailable") from exc
 
-    # Each retry rotates an unsent candidate's password. Sent invitations are never mailed twice.
-    with database() as connection:
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute(
-            """SELECT id, candidate_name, candidate_email, candidate_user_id, exam_username
-               FROM assessment_invitations WHERE assessment_id = %s AND removed_at IS NULL AND delivery_status IN ('pending','failed') ORDER BY id""",
-            (assessment_id,),
-        )
-        unsent = cursor.fetchall()
-        cursor.close()
+    return {**invitation_status(assessment_id, employer_id),'saved':True}
 
-    for candidate in unsent:
-        password = new_exam_password()
-        with database() as connection:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute('SELECT id FROM assessments WHERE id=%s FOR UPDATE', (assessment_id,))
-            cursor.fetchone()
-            cursor.execute('SELECT removed_at,delivery_status FROM assessment_invitations WHERE id=%s FOR UPDATE', (candidate['id'],))
-            current = cursor.fetchone()
-            if not current or current['removed_at'] or current['delivery_status'] not in ('pending','failed'):
-                connection.commit()
-                continue
-            cursor.execute("UPDATE assessment_invitations SET password_hash=%s,delivery_status='pending' WHERE id=%s",(hash_password(password),candidate['id']))
-            try:
-                send_calendar_invitation(
-                    settings=mail_settings, assessment_id=assessment_id, invitation_id=candidate['id'],
-                    title=payload.title.strip(), duration_minutes=payload.duration_minutes,
-                    start=payload.starts_at, end=payload.ends_at, candidate_name=candidate['candidate_name'],
-                    candidate_email=candidate['candidate_email'], username=candidate['exam_username'], password=password,
-                    seb_config_password=config_password_for(candidate['exam_username']),
-                    seb_launch_url=f"{SEB_BASE_URL}/seb/launch/{candidate['exam_username']}",
-                    seb_quit_password=quit_password_for(candidate['exam_username']),
-                    registered=candidate['candidate_user_id'] is not None,
-                )
-                event_type, delivery_status = 'invitation_sent', 'sent'
-            except (OSError, smtplib.SMTPException):
-                event_type, delivery_status = 'invitation_failed', 'failed'
-            cursor.execute('UPDATE assessment_invitations SET delivery_status=%s,sent_at=%s WHERE id=%s',
-                           (delivery_status,datetime.now(timezone.utc).replace(tzinfo=None) if delivery_status=='sent' else None,candidate['id']))
-            cursor.execute('INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,%s,%s)',
-                           (assessment_id,employer_id,event_type,candidate['id']))
-            connection.commit()
-
-    return invitation_status(assessment_id, employer_id)
 
 
 def remove_candidate_assignment(assessment_id:int, invitation_id:int, actor_id:int):

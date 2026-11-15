@@ -7,12 +7,12 @@
     <title>Employer workspace | AssessBridge</title>
     <link rel="stylesheet" href="css/employer.css?v=20261113-lifecycle" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
-    <script src="/js/employer.js?v=20261114-esignet-final" defer></script>
-    <script src="js/connectivity-case.js?v=20261114-readiness" defer></script>
+    <script src="/js/employer.js?v=20261115-invitation-batches" defer></script>
+    <script src="js/connectivity-case.js?v=20261115-review-sections" defer></script>
     <link rel="stylesheet" href="/css/reporting.css?v=20261114-refined" />
     <script src="/js/reporting.js?v=20261114-refined" defer></script>
-    <script src="/js/casework.js?v=20261113" defer></script>
-    <script src="js/employer-review.js?v=20261114-esignet-final" defer></script>
+    <script src="/js/casework.js?v=20261115-review-sections" defer></script>
+    <script src="js/employer-review.js?v=20261115-review-sections" defer></script>
     <link rel="stylesheet" href="css/employer-review.css?v=20261114-readiness" />
     <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/personnel.css?v=20261113-roster-removal" />
@@ -81,7 +81,7 @@
                 <p class="side-heading">SETUP STEPS</p>
                 <button type="button" class="step-item is-active" data-step="basics" aria-current="step"><span>1</span><div><strong>Basics &amp; duration</strong><small>Name and timing</small></div></button>
                 <button type="button" class="step-item" data-step="questions"><span>2</span><div><strong>Questions &amp; keys</strong><small>Assessment content</small></div></button>
-                <button type="button" class="step-item" data-step="rules"><span>3</span><div><strong>Rules &amp; identity</strong><small>Items and ID type</small></div></button>
+                <button type="button" class="step-item" data-step="rules"><span>3</span><div><strong>Rules &amp; identity</strong><small>Items and verification</small></div></button>
                 <button type="button" class="step-item" data-step="roster"><span>4</span><div><strong>Candidate roster</strong><small>Eligible candidates</small></div></button>
                 <button type="button" class="step-item" data-step="schedule"><span>5</span><div><strong>Schedule</strong><small>Access window</small></div></button>
                 <button type="button" class="step-item" data-step="final"><span>6</span><div><strong>Final review</strong><small>Check your setup</small></div></button>
@@ -132,13 +132,8 @@
                       <label class="choice-option"><input class="prohibited-item" type="checkbox" value="Books" /><span>Books</span></label>
                       <label class="choice-option"><input class="prohibited-item" type="checkbox" value="Tablet" /><span>Tablet</span></label>
                       <label class="choice-option"><input class="prohibited-item" type="checkbox" value="Calculator" /><span>Calculator</span></label>
-                      <label class="choice-option"><input class="prohibited-item" type="checkbox" value="Shade glass" /><span>Shade glass</span></label>
                     </div><p class="fixed-rule">Additional people are always prohibited.</p></fieldset>
-                    <fieldset class="choice-group"><legend>Identity check</legend><div class="choice-grid">
-                      <label class="choice-option"><input type="radio" name="identity-policy" value="Fayda ID" checked /><span>Fayda ID card</span></label>
-                      <label class="choice-option"><input type="radio" name="identity-policy" value="Other ID cards" /><span>Other ID cards</span></label>
-                      <label id="demo-identity-option" class="choice-option" hidden><input type="radio" name="identity-policy" value="Fayda demo (eSignet)" /><span>Fayda demo authentication</span></label>
-                    </div><p class="fixed-rule">A matching printed name and photo are required. The name must use Latin letters.</p></fieldset>
+                    <fieldset class="choice-group"><legend>Identity verification</legend><p>eSignet authentication (Fayda national ID simulation)</p></fieldset>
                   </div>
                 </section>
 
@@ -256,10 +251,8 @@
                     <button id="review-results-tab" role="tab" aria-selected="false" aria-controls="review-results" data-review-tab="results" type="button" tabindex="-1">Results</button>
                     <button id="review-integrity-tab" role="tab" aria-selected="false" aria-controls="review-integrity" data-review-tab="integrity" type="button" tabindex="-1">Integrity report</button>
                     <button id="review-connectivity-tab" role="tab" aria-selected="false" aria-controls="review-connectivity-pane" data-review-tab="connectivity" type="button" tabindex="-1">Connectivity &amp; interruptions</button>
-                    <button id="review-notes-tab" role="tab" aria-selected="false" aria-controls="review-notes-pane" data-review-tab="notes" type="button" tabindex="-1">Case notes</button>
                     <button id="review-history-tab" role="tab" aria-selected="false" aria-controls="review-history-pane" data-review-tab="history" type="button" tabindex="-1">Session history</button>
                   </div>
-                  <section id="review-notes-pane" class="card section-card casework-panel" data-review-pane="notes" role="tabpanel" aria-labelledby="review-notes-tab" hidden><h3>Case notes</h3><div id="review-case-notes"></div></section>
                   <section id="review-history-pane" class="card section-card casework-panel" data-review-pane="history" role="tabpanel" aria-labelledby="review-history-tab" hidden><h3>Session history</h3><div id="review-case-history"></div></section>
                   <section id="review-overview" role="tabpanel" aria-labelledby="review-overview-tab" data-review-pane="overview">
                     <div class="card review-time-card"><div><span>Time used</span><strong id="review-time-used">—</strong></div><div class="review-time-track" role="progressbar" aria-label="Exam time used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="review-time-progress"></span></div></div>

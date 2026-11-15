@@ -71,10 +71,6 @@
         if(latest.client_version)card.append(node('p','review-muted','SEB version reported by device: '+latest.client_version));
       }
       host.append(card);
-      const events=node('details','card section-card environment-report');events.append(node('summary','',`Page & device events (${readiness.events.length})`));
-      if(!readiness.events.length)events.append(node('p','review-muted','No page or device events recorded.'));
-      else for(const item of readiness.events){const row=node('article','environment-report-event');row.append(node('strong','',item.label),node('p','review-muted','Source: Browser page'),node('p','',`Device time: ${date(item.client_occurred_at)}`),node('p','review-muted',`Received by server: ${date(item.received_at)}`));events.append(row);}
-      host.append(events);
     }
     if (!data.incidents.length && !data.confirmed_exits?.length) {
       host.append(node("p", "card section-card", "No interruptions recorded.")); return;

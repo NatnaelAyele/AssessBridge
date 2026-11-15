@@ -156,9 +156,8 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
                 if cursor.fetchone() is None:
                     raise HTTPException(status_code=403, detail="Agreement is required before starting")
                 from . import esignet
-                if exam['identity_policy'] == esignet.POLICY:
-                    esignet.require_enabled()
-                method = esignet.METHOD if exam['identity_policy'] == esignet.POLICY else 'card_face'
+                esignet.require_enabled()
+                method = esignet.METHOD
                 cursor.execute(
                     """SELECT 1 FROM assessment_identity_checks
                        WHERE invitation_id = %s AND candidate_user_id = %s

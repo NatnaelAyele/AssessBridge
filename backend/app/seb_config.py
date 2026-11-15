@@ -63,7 +63,7 @@ def build_settings(base_url: str, start_url: str, quit_password: str, identity_p
     rules = [{"active": True, "action": 1, "regex": False, "expression": parsed.netloc + "/*"}]
     from . import esignet
     from .config import ESIGNET_ISSUER
-    if identity_policy == esignet.POLICY and esignet.enabled():
+    if esignet.enabled():
         rules.append({"active": True, "action": 1, "regex": False, "expression": urlsplit(ESIGNET_ISSUER).netloc + "/*"})
     return {
         "sebConfigPurpose": 0,

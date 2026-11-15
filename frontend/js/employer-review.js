@@ -33,7 +33,7 @@ window.employerReview = (() => {
   function notifySaved(scope, text) { if (reviewVisible) scope.notify({ id: 'saved', text }); }
   function deactivate() {
     resultController?.destroy(); resultController = null; resultOwner = null;
-    for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
+    el('review-case-history')?._casework?.();
     reviewVisible = false; ++activationSerial; ++cardLoading;
     indexMessages.clearAll(); cardMessages.clearAll(); sessionMessages.clearAll(); pauseMedia();
   }
@@ -43,7 +43,7 @@ window.employerReview = (() => {
   const cardMessages = feedback.scope('review-cards');
   let fieldSequence = 0;
   function resetMessages() {
-    for(const id of ['review-case-notes','review-case-history'])el(id)?._casework?.();
+    el('review-case-history')?._casework?.();
     pendingWrites.clear();
     sessionMessages.dispose(); sessionMessages = feedback.scope('review-session');
   }
@@ -386,9 +386,9 @@ window.employerReview = (() => {
     }
     for (const pane of document.querySelectorAll("[data-review-pane]")) pane.hidden = pane.dataset.reviewPane !== tab;
     if (tab !== "integrity") pauseMedia();
-    if(report&&['notes','history'].includes(tab)){
-      const options={base:base()+'/review',feedback:employerFeedback,readOnly:sessionReadOnly||report.published,revision:report.revision,onReload:refreshReport,onSaved:result=>{if(result.revision&&!result.duplicate)report.revision=result.revision;else{stale=true;updateDecisionDisabled();}},onReference:ref=>{if(ref.kind==='observation'){selectTab('integrity');const event=monitoring.events.find(e=>e.event_key===ref.key);const article=event&&el('review-event-'+event.id);if(article){article.scrollIntoView({block:'center'});article.querySelector('.review-play-observation')?.click();}}else if(ref.kind==='interruption')selectTab('connectivity');else{el('review-case-notes').dataset.focusNote=ref.key;selectTab('notes');}}};
-      if(tab==='notes')AssessBridgeCasework.mountNotes(el('review-case-notes'),options);else AssessBridgeCasework.mountHistory(el('review-case-history'),options);
+    if(report&&tab==='history'){
+      const options={base:base()+'/review',feedback:employerFeedback,canOpenReference:ref=>['observation','interruption'].includes(ref.kind),onReference:ref=>{if(ref.kind==='observation'){selectTab('integrity');const event=monitoring.events.find(e=>e.event_key===ref.key);const article=event&&el('review-event-'+event.id);if(article){article.scrollIntoView({block:'center'});article.querySelector('.review-play-observation')?.click();}}else if(ref.kind==='interruption')selectTab('connectivity');}};
+      AssessBridgeCasework.mountHistory(el('review-case-history'),options);
     }
   }
   function renderSession() {
