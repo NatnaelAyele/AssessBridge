@@ -449,8 +449,8 @@ async function sendInvitations() {
     if (!scope.active) return;
     if (!response.ok) {
       const safe = {
-        'Email delivery is not configured': 'Email delivery is unavailable. Configure email delivery, then retry.',
-        'SEB invitation setup is incomplete': 'SEB invitation setup is unavailable. Check the setup, then retry.',
+        'Email delivery is not configured': 'Email delivery is temporarily unavailable. Try again later.',
+        'SEB invitation setup is incomplete': 'Invitations are temporarily unavailable. Try again later.',
         'Invitation request does not match the saved assessment': 'This request differs from the saved assessment. Open Assessment detail to check its invitations.',
         'Results are published. Invitations cannot be changed.': 'Results are published. Invitations cannot be changed.',
         'This assessment was saved previously. Open Assessment detail to check its invitations.': 'This assessment was saved previously. Open Assessment detail to check its invitations.',
@@ -484,8 +484,13 @@ async function sendInvitations() {
       const failure = result.failed_email
         ? `Could not send the invitation to ${result.failed_email}. Assessment not saved.`
         : 'Invitations could not be sent. Assessment not saved.';
+      // Only show approved user-facing copy, including when an older server
+      // returns technical details in its message field.
+      const deliveryReason = result.delivery_error?.code === 'recipient_rejected'
+        ? ' Check the candidate email address and try again.'
+        : ' Email delivery is temporarily unavailable. Try again later.';
       scope.show({ id: 'invite-status', target: '#invite-status', tone: 'error',
-        text: failure + (result.cancelled_deliveries > 0 ? ' Earlier invitations are invalid. Edit the details and resend to everyone.' : ' Edit the details and try again.'),
+        text: failure + deliveryReason + (result.cancelled_deliveries > 0 ? ' Earlier invitations are invalid. Resend to everyone.' : ''),
         action: { label: 'Try again', onClick: sendInvitations } });
       return;
     }
