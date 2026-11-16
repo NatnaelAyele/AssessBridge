@@ -1,17 +1,35 @@
 import os
 import smtplib
 import ssl
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from html import escape
 from urllib.parse import urlencode, urljoin
 
-from .config import SEB_BASE_URL, SEB_CONFIG_PASSWORD, SEB_REQUIRED
+from dotenv import dotenv_values
+
+from .config import ROOT_DIR, SEB_BASE_URL, SEB_CONFIG_PASSWORD, SEB_REQUIRED
+
+LOG = logging.getLogger(__name__)
 
 
 class MailNotConfigured(Exception):
     pass
+
+
+class MailDeliveryError(smtplib.SMTPException):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def delivery_failure(exc: Exception) -> dict:
+    # Public responses use fixed copy, never exception text or internal diagnostics.
+    if isinstance(exc, MailDeliveryError) and exc.code == "recipient_rejected":
+        return {"code": "recipient_rejected", "message": "The invitation could not be delivered to this address. Check the candidate email and try again."}
+    return {"code": "delivery_failed", "message": "Email delivery is temporarily unavailable. Try again later."}
 
 
 EXAM_ENTRY_URL = os.getenv("EXAM_ENTRY_URL", "http://127.0.0.1:8000/exam-entry").strip()
@@ -29,13 +47,18 @@ class MailSettings:
 
     @classmethod
     def from_environment(cls):
-        host = os.getenv("SMTP_HOST", "").strip()
-        username = os.getenv("SMTP_USERNAME", "").strip()
-        password = os.getenv("SMTP_PASSWORD", "")
-        sender = os.getenv("SMTP_SENDER", "").strip()
-        security = os.getenv("SMTP_SECURITY", "starttls").lower()
+        # Local SMTP settings are editable without restarting the app. When no
+        # .env value is supplied, deployments can provide process environment values.
+        local = dotenv_values(ROOT_DIR / ".env")
+        def setting(key, default=""):
+            return local[key] if local.get(key) is not None else os.getenv(key, default)
+        host = setting("SMTP_HOST").strip()
+        username = setting("SMTP_USERNAME").strip()
+        password = setting("SMTP_PASSWORD")
+        sender = setting("SMTP_SENDER").strip()
+        security = setting("SMTP_SECURITY", "starttls").strip().lower()
         try:
-            port = int(os.getenv("SMTP_PORT", "587"))
+            port = int(setting("SMTP_PORT", "587"))
         except ValueError as exc:
             raise MailNotConfigured("Invalid SMTP port") from exc
         if not all((host, username, password, sender)) or security not in {"starttls", "ssl"} or not 1 <= port <= 65535:
@@ -179,14 +202,46 @@ def send_verification_email(*, settings: MailSettings, email: str, username: str
 
 def _send_message(settings: MailSettings, message: EmailMessage) -> None:
     context = ssl.create_default_context()
-    if settings.security == "ssl":
-        with smtplib.SMTP_SSL(settings.host, settings.port, timeout=15, context=context) as smtp:
-            smtp.login(settings.username, settings.password)
-            smtp.send_message(message)
-    else:
-        with smtplib.SMTP(settings.host, settings.port, timeout=15) as smtp:
-            smtp.ehlo()
+    smtp = None
+    stage = "connect"
+    try:
+        smtp = (smtplib.SMTP_SSL(settings.host, settings.port, timeout=20, context=context)
+                if settings.security == "ssl" else smtplib.SMTP(settings.host, settings.port, timeout=20))
+        stage = "secure_connection"
+        smtp.ehlo()
+        if settings.security != "ssl":
             smtp.starttls(context=context)
             smtp.ehlo()
-            smtp.login(settings.username, settings.password)
-            smtp.send_message(message)
+        stage = "authentication"
+        smtp.login(settings.username, settings.password)
+        stage = "delivery"
+        smtp.send_message(message)
+    except (OSError, smtplib.SMTPException) as exc:
+        # Never expose passwords, email bodies, or provider responses in logs/UI.
+        LOG.warning("Email delivery failed: stage=%s host=%s port=%s security=%s error=%s smtp_code=%s",
+                    stage, settings.host, settings.port, settings.security,
+                    type(exc).__name__, getattr(exc, "smtp_code", None))
+        if isinstance(exc, smtplib.SMTPAuthenticationError):
+            code, text = "authentication_failed", "Email delivery is temporarily unavailable. Try again later."
+        elif isinstance(exc, smtplib.SMTPRecipientsRefused):
+            code, text = "recipient_rejected", "The invitation could not be delivered to this address. Check the candidate email and try again."
+        elif isinstance(exc, smtplib.SMTPSenderRefused):
+            code, text = "sender_rejected", "Email delivery is temporarily unavailable. Try again later."
+        elif isinstance(exc, smtplib.SMTPDataError):
+            code, text = "message_rejected", "Email delivery is temporarily unavailable. Try again later."
+        elif stage == "connect":
+            code, text = "connection_failed", "Email delivery is temporarily unavailable. Try again later."
+        elif stage == "secure_connection":
+            code, text = "secure_connection_failed", "Email delivery is temporarily unavailable. Try again later."
+        elif stage == "authentication":
+            code, text = "authentication_unavailable", "Email delivery is temporarily unavailable. Try again later."
+        else:
+            code, text = "delivery_unconfirmed", "Invitation delivery could not be confirmed. Try again later."
+        raise MailDeliveryError(code, text) from exc
+    finally:
+        if smtp is not None:
+            try:
+                smtp.quit()
+            except (OSError, smtplib.SMTPException):
+                # QUIT failure must not turn an accepted message into a failed batch.
+                smtp.close()

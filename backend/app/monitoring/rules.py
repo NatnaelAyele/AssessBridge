@@ -3,12 +3,14 @@
 from collections import deque
 import hashlib
 
-POLICY_VERSION = "monitoring-2.2"
+POLICY_VERSION = "monitoring-2.4"
 POLICY = {
     "version": POLICY_VERSION,
     "video_fps": 2,
     "identity_threshold": 0.40,
     "phone_evidence": {"window_seconds": 3, "max_missed_seconds": 0.5},
+    "book_evidence": {"window_seconds": 3, "max_missed_seconds": 0.5},
+    "framing_evidence": {"window_seconds": 7, "max_missed_seconds": 1},
     "threshold_seconds": {
         "identity_mismatch": 5, "face_absent": 5, "face_unusable": 8,
         "additional_person": 2, "mobile_phone": 1.5, "book": 1.5,
@@ -35,36 +37,38 @@ class Events:
         self.active = {}
         self.episodes = {"speech": deque(), "look_away": deque()}
         self.previous_end = None
-        self.phone = None
-        self.phone_samples = deque()
+        self.object_states = {}
+        self.object_samples = {"mobile_phone": deque(), "book": deque(), "framing_changed": deque()}
 
-    def _phone(self, start_ms, end_ms, signals, gap=False, finish=False):
-        """Require 1.5s of actual detections within 3s; tolerate one missed check."""
-        config = self.policy["phone_evidence"]
-        found = "mobile_phone" in signals and not finish
+    def _object_evidence(self, kind, config, start_ms, end_ms, signals, gap=False, finish=False, reset=False):
+        """Count observed evidence in a rolling window, without counting gaps."""
+        state = self.object_states.get(kind)
+        samples = self.object_samples[kind]
+        found = kind in signals and not finish
         emitted = []
-        if self.phone and (finish or gap or
-                (start_ms if found else end_ms) - self.phone["end_ms"] > config["max_missed_seconds"] * 1000):
-            if self.phone["qualified"]:
-                emitted.append(self._event("mobile_phone", self.phone, True))
-            self.phone = None
-            self.phone_samples.clear()
+        if state and (finish or gap or reset or
+                (start_ms if found else end_ms) - state["end_ms"] > config["max_missed_seconds"] * 1000):
+            if state["qualified"]:
+                emitted.append(self._event(kind, state, True))
+            state = None
+            self.object_states.pop(kind, None)
+            samples.clear()
         if found:
-            if self.phone is None:
-                self.phone = {"start_ms": start_ms, "end_ms": end_ms, "count": 0,
+            if state is None:
+                state = {"start_ms": start_ms, "end_ms": end_ms, "count": 0,
                               "confidence": 0, "qualified": False}
-            state = self.phone
+            self.object_states[kind] = state
             state.update(end_ms=end_ms, count=state["count"] + 1,
-                         confidence=max(state["confidence"], float(signals["mobile_phone"])))
-            self.phone_samples.append((start_ms, end_ms))
+                         confidence=max(state["confidence"], float(signals[kind])))
+            samples.append((start_ms, end_ms))
             cutoff = end_ms - config["window_seconds"] * 1000
-            while self.phone_samples and self.phone_samples[0][1] <= cutoff:
-                self.phone_samples.popleft()
-            detected_ms = sum(b - max(a, cutoff) for a, b in self.phone_samples)
-            if detected_ms >= self.policy["threshold_seconds"]["mobile_phone"] * 1000:
+            while samples and samples[0][1] <= cutoff:
+                samples.popleft()
+            detected_ms = sum(b - max(a, cutoff) for a, b in samples)
+            if detected_ms >= self.policy["threshold_seconds"][kind] * 1000:
                 state["qualified"] = True
             if state["qualified"]:
-                emitted.append(self._event("mobile_phone", state, False))
+                emitted.append(self._event(kind, state, False))
         return emitted
 
     def _event(self, kind, state, closed):
@@ -74,12 +78,18 @@ class Events:
                 "confidence": state["confidence"], "closed": closed,
                 "details": {"observations": state["count"], "decision": "requires_human_review"}}
 
-    def push(self, start_ms, end_ms, signals):
+    def push(self, start_ms, end_ms, signals, metrics=None):
         emitted = []
         gap = self.previous_end is not None and start_ms - self.previous_end > 750
-        if self.policy.get("phone_evidence"):
-            emitted.extend(self._phone(start_ms, end_ms, signals, gap))
-            signals = {kind: confidence for kind, confidence in signals.items() if kind != "mobile_phone"}
+        for kind, key in (("mobile_phone", "phone_evidence"), ("book", "book_evidence")):
+            if self.policy.get(key):
+                emitted.extend(self._object_evidence(kind, self.policy[key], start_ms, end_ms, signals, gap))
+                signals = {label: confidence for label, confidence in signals.items() if label != kind}
+        if self.policy.get("framing_evidence"):
+            emitted.extend(self._object_evidence(
+                "framing_changed", self.policy["framing_evidence"], start_ms, end_ms, signals, gap,
+                reset=(metrics or {}).get("framing_state") == "normal"))
+            signals = {kind: confidence for kind, confidence in signals.items() if kind != "framing_changed"}
         for kind in list(self.active):
             if kind not in signals or gap:
                 state = self.active.pop(kind)
@@ -114,6 +124,8 @@ class Events:
 
     def finish(self):
         emitted = self.push(self.previous_end or 0, self.previous_end or 0, {})
-        if self.policy.get("phone_evidence"):
-            emitted.extend(self._phone(0, 0, {}, finish=True))
+        for kind, key in (("mobile_phone", "phone_evidence"), ("book", "book_evidence"),
+                          ("framing_changed", "framing_evidence")):
+            if self.policy.get(key):
+                emitted.extend(self._object_evidence(kind, self.policy[key], 0, 0, {}, finish=True))
         return emitted

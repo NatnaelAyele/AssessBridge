@@ -10,7 +10,7 @@ import onnxruntime as ort
 
 from ..identity import MODEL_DIR, _face_models, _model_lock
 
-MODEL_VERSION = "yunet-2023mar+sface-2021dec+yolox-s-0.1.1+rtdetr-r18-o365v2+silero-066409f+policy2.2"
+MODEL_VERSION = "yunet-2023mar+sface-2021dec+yolox-s-0.1.1+rtdetr-r18-o365v2+silero-066409f+policy2.4"
 PROHIBITED_OBJECTS = {"Mobile phone": "mobile_phone", "Books": "book", "Tablet": "tablet", "Calculator": "calculator"}
 OBJECTS365_CLASSES = {243: "tablet", 316: "calculator"}
 
@@ -127,6 +127,7 @@ class Vision:
             detections += extended_objects(image)
         signals = {}
         metrics = {"objects": detections, "signals": signals, "identity_checked": False,
+                   "framing_state": "unavailable",
                    "reference_available": self.reference_feature is not None}
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         tiny = cv2.resize(gray, (64, 36)).astype(np.float32)
@@ -178,7 +179,10 @@ class Vision:
             if self.previous_center is None:
                 self.previous_center = center
             if np.linalg.norm(center-self.previous_center) > .25:
+                metrics["framing_state"] = "changed"
                 signals["framing_changed"] = 1.0
+            else:
+                metrics["framing_state"] = "normal"
             # Angled, blurred, or obscured faces are not identity-mismatch evidence.
             if self.reference_feature is not None and abs(pose[0]) < .35 and .10 < pose[1] < .90:
                 feature = recognizer.feature(recognizer.alignCrop(image, face))

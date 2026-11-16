@@ -178,7 +178,7 @@ def analyse_stream(job, stream, stop, reference):
                 duration_ms = round(len(pcm) / 16)
             end_ms = position_ms + duration_ms
             record_sample(job["session_id"], job["part_id"], stream, position_ms, end_ms, metrics,
-                          events.push(position_ms, end_ms, metrics["signals"]))
+                          events.push(position_ms, end_ms, metrics["signals"], metrics))
             position_ms = end_ms
             count += 1
         if stop.is_set():

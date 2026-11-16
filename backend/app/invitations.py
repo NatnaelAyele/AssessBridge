@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .db import database
 from .config import ROOT_DIR, SEB_BASE_URL, SEB_CONFIG_KEY, SEB_CONFIG_PASSWORD, SEB_QUIT_PASSWORD, SEB_REQUIRED
-from .mail import EXAM_ENTRY_URL, MailNotConfigured, MailSettings, send_calendar_invitation
+from .mail import EXAM_ENTRY_URL, MailNotConfigured, MailSettings, send_calendar_invitation, delivery_failure
 from .seb_config import build_encrypted_configuration, config_password_for, quit_password_for
 from .security import hash_password
 
@@ -419,11 +419,11 @@ def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> d
                         seb_quit_password=quit_password_for(candidate['exam_username']),
                         registered=candidate['candidate_user_id'] is not None,
                     )
-                except (OSError,smtplib.SMTPException):
+                except (OSError,smtplib.SMTPException) as exc:
                     connection.rollback()
                     return {'saved':False,'assessment_id':None,'sent':index,'failed':1,
                             'pending':len(unsent)-index-1,'cancelled_deliveries':index,
-                            'failed_email':candidate['candidate_email']}
+                            'failed_email':candidate['candidate_email'], 'delivery_error':delivery_failure(exc)}
                 cursor.execute("UPDATE assessment_invitations SET delivery_status='sent',sent_at=UTC_TIMESTAMP() WHERE id=%s",(candidate['id'],))
                 cursor.execute("INSERT INTO assessment_activity(assessment_id,actor_user_id,event_type,invitation_id) VALUES(%s,%s,'invitation_sent',%s)",
                                (assessment_id,employer_id,candidate['id']))
