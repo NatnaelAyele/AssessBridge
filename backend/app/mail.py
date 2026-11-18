@@ -135,7 +135,8 @@ def send_calendar_invitation(
     account_instruction = (
         f"Your existing candidate account uses {candidate_email}. Sign in with that account.\n"
         if registered else
-        f"Before opening SEB, use a regular browser to create and verify an account with this exact email address: {registration_link}\n"
+        ("Before opening SEB, use a regular browser to create and verify an account with this exact email address: "
+         if SEB_REQUIRED else "Create and verify an account with this exact email address: ") + registration_link + "\n"
     )
     config_link = seb_launch_url or f"{SEB_BASE_URL}/seb/config"
     launch_page = urljoin(config_link, "/seb/open/" + username)
