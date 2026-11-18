@@ -150,6 +150,8 @@ def store_chunk(invitation_id: int, candidate_id: int, part_id: int, sequence: i
                 return {"received": True, "sequence": sequence, "duplicate": True}
             if part["status"] != "recording":
                 raise HTTPException(status_code=409, detail="This recording part has ended")
+            from .operations import require_upload_budget
+            require_upload_budget(cursor, recording['recording_id'], len(payload))
             cursor.execute(
                 "SELECT MAX(sequence_number) AS last_sequence FROM assessment_recording_chunks WHERE part_id = %s",
                 (part_id,),

@@ -174,6 +174,21 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="AssessBridge API", lifespan=lifespan)
+
+
+@app.get('/health/live', include_in_schema=False)
+def application_liveness(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    return {'status': 'ok'}
+
+
+@app.get('/health/ready', include_in_schema=False)
+def application_readiness(response: Response):
+    from .operations import dependency_status
+    ready = all(dependency_status().values())
+    response.status_code = 200 if ready else 503
+    response.headers['Cache-Control'] = 'no-store'
+    return {'status': 'ready' if ready else 'unavailable'}
 app.add_exception_handler(StarletteHTTPException, page_http_error)
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")

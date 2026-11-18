@@ -310,6 +310,8 @@ def invitation_status(assessment_id: int, employer_id: int) -> dict:
 
 
 def send_all_invitations(payload: SendInvitationsRequest, employer_id: int) -> dict:
+    from .operations import require_supported_duration
+    require_supported_duration(payload.duration_minutes)
     if SEB_REQUIRED and (
         not re.fullmatch(r"[0-9a-f]{64}", SEB_CONFIG_KEY)
         or not SEB_CONFIG_PASSWORD
