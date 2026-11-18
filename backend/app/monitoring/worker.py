@@ -33,6 +33,10 @@ from .rules import Events
 LOG = logging.getLogger(__name__)
 
 
+def decoder_stalled(drained_at, last_progress, current):
+    return drained_at is not None and current - max(drained_at, last_progress) > 90
+
+
 @contextmanager
 def scheduler_pool(stop, concurrency):
     pool = ThreadPoolExecutor(max_workers=concurrency)
@@ -135,6 +139,7 @@ def analyse_stream(job, stream, stop, reference):
     events = Events(job["part_id"], stream, policy)
     errors, stderr = [], bytearray()
     done, source_done = threading.Event(), threading.Event()
+    last_progress = time.monotonic()
     proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=flags)
 
     def watch():
@@ -142,7 +147,10 @@ def analyse_stream(job, stream, stop, reference):
         while not done.wait(.5):
             if source_done.is_set() and drained_at is None:
                 drained_at = time.monotonic()
-            if stop.is_set() or (drained_at and time.monotonic() - drained_at > 90):
+            # EOF from the feeder is not a decoding stall: CPU inference can
+            # take longer than the recording itself. Only stop after 90 seconds
+            # without progress after EOF, or an explicit shutdown.
+            if stop.is_set() or decoder_stalled(drained_at, last_progress, time.monotonic()):
                 proc.kill()
                 return
 
@@ -165,6 +173,7 @@ def analyse_stream(job, stream, stop, reference):
             data = read_exact(proc.stdout, unit_bytes)
             if not data:
                 break
+            last_progress = time.monotonic()
             if stream == "video":
                 if len(data) != unit_bytes:
                     raise RuntimeError("incomplete_decoded_video_frame")
@@ -176,6 +185,7 @@ def analyse_stream(job, stream, stop, reference):
                     break
                 metrics = analyser.analyse(pcm)
                 duration_ms = round(len(pcm) / 16)
+            last_progress = time.monotonic()
             end_ms = position_ms + duration_ms
             record_sample(job["session_id"], job["part_id"], stream, position_ms, end_ms, metrics,
                           events.push(position_ms, end_ms, metrics["signals"], metrics))
