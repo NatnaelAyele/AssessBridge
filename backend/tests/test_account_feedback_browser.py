@@ -10,7 +10,7 @@ import time
 import unittest
 from urllib.parse import urlsplit
 
-from chrome_probe import ChromeProbe
+from chrome_probe import ChromeProbe, find_chrome
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -19,6 +19,7 @@ class AccountHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
         aliases = {'/': '/index.html', '/register': '/register.html',
+                   '/company-register': '/company-access.html', '/password-reset': '/company-access.html',
                    '/verify-email': '/verify-email.html', '/exam-entry': '/exam-entry.html'}
         if path in ('/candidate', '/employer', '/auditor'):
             self.send_response(200)
@@ -35,17 +36,17 @@ class AccountHandler(SimpleHTTPRequestHandler):
 class AccountFeedbackBrowserTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not Path(r'C:\Program Files\Google\Chrome\Application\chrome.exe').is_file():
-            raise unittest.SkipTest('Chrome is not installed at the configured local path')
+        if not find_chrome():
+            raise unittest.SkipTest('Install Chrome/Chromium or set CHROME_BIN to run browser tests')
         cls.temporary = tempfile.TemporaryDirectory(prefix='assessbridge-accounts-')
         directory = Path(cls.temporary.name)
         public = directory/'public'
         public.mkdir()
         shutil.copytree(ROOT/'frontend/css', public/'css')
         (public/'js').mkdir()
-        for script in ('ui-messages', 'account-feedback', 'login', 'register', 'verify-email', 'exam-entry', 'seb-client'):
+        for script in ('password-fields', 'company', 'ui-messages', 'account-feedback', 'login', 'register', 'verify-email', 'exam-entry', 'seb-client'):
             shutil.copyfile(ROOT/f'frontend/js/{script}.js', public/f'js/{script}.js')
-        for page in ('index', 'register', 'verify-email', 'exam-entry'):
+        for page in ('index', 'register', 'verify-email', 'exam-entry', 'company-access'):
             shutil.copyfile(ROOT/f'frontend/{page}.html', public/f'{page}.html')
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), partial(AccountHandler, directory=str(public)))
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
@@ -97,6 +98,58 @@ window.fetch=async(url,options={})=>{
 
     def check(self, script):
         self.assertTrue(self.browser.evaluate('(async()=>{'+script+';assert(!errors.length,errors.join("; "));return true})()'))
+
+    def test_password_controls_across_account_flows(self):
+        for page, count in (('/', 1), ('/register', 3), ('/exam-entry', 2),
+                            ('/company-register', 4), ('/password-reset#reset=test-token', 4)):
+            self.open(page)
+            self.assertEqual(self.browser.evaluate('document.querySelectorAll(".ab-password-toggle").length'), count)
+            self.check('''
+let submissions=0;
+document.addEventListener('submit',e=>{submissions++;e.preventDefault()},true);
+for(const input of document.querySelectorAll('[data-password-input]')){
+ const button=input.parentElement.querySelector('.ab-password-toggle');
+ input.value='Example-password';
+ assert(button.type==='button'&&button.getAttribute('aria-controls')===input.id,'safe associated button');
+ button.click();
+ assert(input.type==='text'&&input.value==='Example-password','revealed without changing value');
+ assert(button.getAttribute('aria-label')==='Hide password'&&button.getAttribute('aria-pressed')==='true','accessible visible state');
+ button.click();assert(input.type==='password','concealed');
+}
+assert(submissions===0,'visibility does not submit');
+''')
+            for width in (390, 1280):
+                self.browser.command('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+                self.check('''
+for(const button of document.querySelectorAll('.ab-password-toggle')){
+ if(!button.getClientRects().length)continue;
+ const box=button.getBoundingClientRect(),input=button.parentElement.querySelector('input').getBoundingClientRect();
+ assert(box.width>=44&&box.height>=44,'touch target');
+ assert(box.left>=input.left&&box.right<=input.right+1,'eye stays inside field');
+}
+assert(document.documentElement.scrollWidth<=innerWidth+1,'no page overflow');
+''')
+        self.check('''
+const resetForm=el('accept'), resetButton=resetForm.querySelector('button:not([type="button"])');
+const resetPassword=resetForm.elements.password,resetConfirmation=resetForm.elements.confirmation;
+resetPassword.value='x'.repeat(73);resetConfirmation.value=resetPassword.value;
+resetPassword.parentElement.querySelector('button').click();
+resetForm.requestSubmit();await wait(30);
+assert(resetPassword.getAttribute('aria-invalid')==='true','revealing cannot bypass password byte limit');
+assert(resetButton.textContent==='Save password','submit button remains intact');
+assert(!requests.some(r=>r.path==='/api/auth/password/reset'),'invalid reset not sent');
+resetPassword.value='Valid-password';resetConfirmation.value=resetPassword.value;
+routes['/api/auth/password/reset']={status:200,body:{message:'Password reset.'}};
+resetForm.requestSubmit();await wait(50);
+assert(requests.some(r=>r.path==='/api/auth/password/reset'),'reset submits using the real submit button');
+assert(resetPassword.parentElement.querySelector('button').querySelector('svg'),'eye icon not replaced by submit progress');
+const field=el('accept').elements.password;
+field.value='temporary-value';field.parentElement.querySelector('button').click();
+el('accept').reset();assert(field.type==='password','reset conceals password');
+const extra=document.createElement('input');extra.type='password';document.body.append(extra);
+await wait(30);assert(extra.parentElement.querySelector('.ab-password-toggle'),'inserted field enhanced');
+extra.disabled=true;await wait(30);assert(extra.parentElement.querySelector('button').disabled,'disabled field respected');
+''')
 
     def test_sign_in_fields_persistent_errors_and_safe_retry(self):
         self.open('/', {'/api/auth/login': {'status': 401}})

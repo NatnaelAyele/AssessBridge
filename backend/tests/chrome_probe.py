@@ -2,6 +2,7 @@
 import base64
 import json
 import os
+import shutil
 from pathlib import Path
 import socket
 import struct
@@ -11,10 +12,33 @@ import urllib.request
 from urllib.parse import urlsplit
 
 
+def find_chrome():
+    """Support installed Chrome/Chromium or an explicit CHROME_BIN path."""
+    configured = os.getenv('CHROME_BIN')
+    candidates = [configured] if configured else [
+        'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser',
+        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+        str(Path(os.getenv('LOCALAPPDATA', '')) / 'Google/Chrome/Application/chrome.exe'),
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    ]
+    for candidate in candidates:
+        executable = shutil.which(candidate)
+        if executable:
+            return executable
+        if Path(candidate).is_file():
+            return str(Path(candidate).resolve())
+    return None
+
+
 class ChromeProbe:
     def __init__(self, profile, flags=()):
         self.profile = Path(profile)
-        self.process = subprocess.Popen([r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        executable = find_chrome()
+        if not executable:
+            raise RuntimeError('Install Chrome/Chromium or set CHROME_BIN to its executable')
+        self.process = subprocess.Popen([executable,
             '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions', '--disable-background-mode', '--remote-debugging-port=0',
             '--user-data-dir='+str(self.profile), *flags, 'about:blank'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(200):

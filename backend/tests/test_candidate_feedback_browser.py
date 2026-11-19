@@ -16,7 +16,7 @@ class CandidateFeedbackBrowserTests(unittest.TestCase):
         public = Path(cls.temporary.name)/'public'
         for page in ('candidate', 'exam-room'):
             shutil.copyfile(accounts.ROOT/f'frontend/{page}.html', public/f'{page}.html')
-        for name in ('candidate-feedback', 'candidate', 'exam-room', 'identity', 'identity-crop', 'exam-storage', 'exam-connectivity', 'exam-recording', 'exam-readiness', 'exam-attempt'):
+        for name in ('candidate-feedback', 'candidate', 'exam-room', 'identity', 'exam-storage', 'exam-connectivity', 'exam-recording', 'exam-readiness', 'exam-attempt'):
             shutil.copyfile(accounts.ROOT/f'frontend/js/{name}.js', public/f'js/{name}.js')
 
     @classmethod
@@ -29,7 +29,7 @@ class CandidateFeedbackBrowserTests(unittest.TestCase):
         self.open_page('/candidate.html' if dashboard else '/exam-room.html', {
             '/api/auth/me': {'status': 200, 'body': {'role': 'candidate', 'username': 'candidate@example.com'}},
             '/api/candidate/assessments': {'status': 200, 'body': {'assessments': []}},
-            '/api/candidate/exam-room': {'status': 200, 'delay': 30, 'body': {'title': 'Example exam', 'consented': False, 'identity_policy': 'Other ID cards'}},
+            '/api/candidate/exam-room': {'status': 200, 'delay': 30, 'body': {'title': 'Example exam', 'consented': False, 'identity_policy': 'Fayda demo (eSignet)'}},
             '/api/candidate/exam/prepare': {'status': 200, 'body': {'storage_scope': 'feedback-'+str(self.run_id)}},
             '/api/candidate/exam/answer': {'status': 200, 'body': {'answered_count': 1}},
             '/api/candidate/exam/recording/finish': {'status': 200, 'body': {'status': 'complete'}},
@@ -148,11 +148,12 @@ assert(!document.querySelector('.ab-feedback--temporary'),'no temporary terminal
         self.check('''
 showPanel('device-panel');setDeviceError('Reconnect the microphone.');
 assert(el('device-error').querySelector('[data-tone=error]'),'device error styled');setDeviceError('');assert(el('device-error').hidden,'device error clears');
-showPanel('identity-panel');identityMessage('The printed name does not match the invitation.');
-assert(el('identity-error').textContent.includes('printed name'),'identity reason retained');
-showIdentityResult({status:'failed',checked_at:'2026-11-12T09:00:00Z',stage:'name',attempts:3});
-assert(!el('identity-check-result').textContent,'no duplicate attempt exposition');
-identityMessage('');showIdentityResult({status:'passed'});assert(el('identity-check-result').textContent==='Identity check passed.','passed status');
+showPanel('identity-panel');identityMessage('Capture a clear image with only your face visible.');
+assert(el('identity-error').textContent.includes('only your face'),'photo error retained');
+identityMessage('');assert(el('identity-error').hidden,'photo error clears');
+demoAuthenticated=true;configureIdentity();
+assert(el('identity-auth-status').textContent==='Authenticated','authenticated status visible');
+assert(!el('identity-photo-content').hidden,'session photo available after authentication');
 ''')
 
     def test_timeout_confirmation_and_mobile_exam_status_layout(self):

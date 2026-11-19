@@ -1,4 +1,6 @@
 import json
+import os
+import re
 import secrets
 import sys
 import unittest
@@ -10,7 +12,8 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config import COOKIE_NAME, EXAM_COOKIE_NAME, SEB_BASE_URL  # noqa: E402
+from app.config import COOKIE_NAME, DB_CONFIG, EXAM_COOKIE_NAME, SEB_BASE_URL  # noqa: E402
+from app.esignet import METHOD  # noqa: E402
 from app.db import database  # noqa: E402
 from app.exam_sessions import submit_expired_attempts  # noqa: E402
 from app.invitations import assessment_detail  # noqa: E402
@@ -21,6 +24,11 @@ from app.seb import config_hash  # noqa: E402
 
 class ExamSessionIntegrationTests(unittest.TestCase):
     def setUp(self):
+        # These fixtures write records. Only the isolated test runner may select
+        # their database; direct discovery must never touch application data.
+        name = os.getenv('ASSESSBRIDGE_TEST_DATABASE', '')
+        if name != DB_CONFIG['database'] or not re.fullmatch(r'assessbridge_test_[0-9a-f]{12}', name):
+            self.skipTest('Use python backend/run_tests.py --integration for an isolated test database')
         suffix = secrets.token_hex(5)
         self.candidate_username = f"exam_candidate_{suffix}"
         self.employer_username = f"exam_employer_{suffix}"
@@ -60,11 +68,13 @@ class ExamSessionIntegrationTests(unittest.TestCase):
                 "INSERT INTO assessment_consents (invitation_id, candidate_user_id, policy_version) VALUES (%s, %s, %s)",
                 (self.invitation_id, self.candidate_id, POLICY_VERSION),
             )
+            # Session tests begin after authentication and the live photo.
+            # test_esignet_integration exercises that complete identity sequence.
             cursor.execute(
                 """INSERT INTO assessment_identity_checks
-                   (invitation_id, candidate_user_id, status, checked_at, evidence_expires_at)
-                   VALUES (%s, %s, 'passed', UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 30 DAY)""",
-                (self.invitation_id, self.candidate_id),
+                   (invitation_id, candidate_user_id, status, stage, verification_method, checked_at, evidence_expires_at)
+                   VALUES (%s, %s, 'passed', 'demo_complete', %s, UTC_TIMESTAMP(), UTC_TIMESTAMP() + INTERVAL 30 DAY)""",
+                (self.invitation_id, self.candidate_id, METHOD),
             )
             connection.commit()
             cursor.close()
@@ -106,6 +116,17 @@ class ExamSessionIntegrationTests(unittest.TestCase):
         requirement=client.get('/api/candidate/exam/readiness').json()
         confirmation={'instructions_version':requirement['instructions_version'],'platform':'Windows','client_version':'SEB_Windows_test','checks':{key:True for key in ('secure_context','media_recorder','encrypted_storage','camera','microphone','web_audio')},'acknowledgements':{key:True for key in ('instructions','room','interruptions')}}
         self.assertEqual(client.post('/api/candidate/exam/readiness',json=confirmation).status_code,200)
+
+    def test_passed_check_without_current_identity_method_cannot_start(self):
+        with self.client() as client:
+            with database() as connection:
+                cursor = connection.cursor()
+                cursor.execute("UPDATE assessment_identity_checks SET verification_method='card_face' WHERE invitation_id=%s",
+                               (self.invitation_id,))
+                connection.commit()
+            response = client.post('/api/candidate/exam/start')
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(response.json()['detail'], 'Complete identity verification before starting')
 
     def test_sequential_navigation_autosave_and_manual_submission(self):
         with self.client() as client:
