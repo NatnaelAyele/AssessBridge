@@ -1,6 +1,6 @@
 """Opt-in protocol acceptance test against the real local Compose services.
 
-RUN_ESIGNET_LIVE=1 python -m unittest test_esignet_live -v
+python backend/run_tests.py --live-esignet
 Uses disposable AssessBridge accounts/exams and the documented fictional IDs.
 """
 from http.cookiejar import CookieJar
@@ -21,7 +21,7 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-@unittest.skipUnless(os.getenv('RUN_ESIGNET_LIVE')=='1','Start the demo services and set RUN_ESIGNET_LIVE=1')
+@unittest.skipUnless(os.getenv('RUN_ESIGNET_LIVE')=='1','Start the demo services and use python backend/run_tests.py --live-esignet')
 class EsignetLiveTests(unittest.TestCase):
     def test_all_seeded_identities_otp_consent_and_signed_return(self):
         seeds=json.loads((config.ROOT_DIR/'infra/esignet/identities.json').read_text())

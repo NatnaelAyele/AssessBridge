@@ -134,8 +134,8 @@ class EsignetIntegrationTests(unittest.TestCase):
         with patch.object(config,'ESIGNET_DEMO_ENABLED',False):
             self.assertEqual(self.client.post('/api/candidate/identity/esignet/start').status_code,503)
 
-    def test_card_route_and_unverified_photo_cannot_bypass_authentication(self):
-        self.assertEqual(self.client.post('/api/candidate/identity/verify',json={'card':'YQ==','selfie':'YQ=='}).status_code,403)
+    def test_removed_card_route_and_unverified_photo_cannot_bypass_authentication(self):
+        self.assertEqual(self.client.post('/api/candidate/identity/verify',json={'card':'YQ==','selfie':'YQ=='}).status_code,404)
         with patch('app.identity._decode_image',return_value=(np.zeros((480,640,3),np.uint8),np.frombuffer(b'test',dtype=np.uint8))), \
              patch('app.identity._face_models',return_value=(object(),object())), \
              patch('app.identity._detect_one',return_value=(object(),None)):

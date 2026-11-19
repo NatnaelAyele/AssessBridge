@@ -36,10 +36,16 @@ class EsignetSetupTests(unittest.TestCase):
                 self.assertNotIn('PRIVATE KEY',sql)
                 self.assertIn('ESIGNET_DEMO_ENABLED',(root/'.env').read_text())
 
-    def test_seb_origin_is_allowed_only_for_demo_exams(self):
+    def test_seb_allows_identity_origin_for_all_exams_when_esignet_enabled(self):
         with patch.object(config,'ESIGNET_DEMO_ENABLED',True),patch.object(config,'ESIGNET_ISSUER','http://127.0.0.1:3000'):
             ordinary=build_settings('http://127.0.0.1:8000','http://127.0.0.1:8000/exam-entry','test')
             demo=build_settings('http://127.0.0.1:8000','http://127.0.0.1:8000/exam-entry','test',esignet.POLICY)
-            self.assertEqual(len(ordinary['URLFilterRules']),1)
+            self.assertEqual(len(ordinary['URLFilterRules']),2)
             self.assertEqual(len(demo['URLFilterRules']),2)
+            self.assertEqual(ordinary['URLFilterRules'],demo['URLFilterRules'])
             self.assertIn('127.0.0.1:3000/*',[row['expression'] for row in demo['URLFilterRules']])
+
+    def test_seb_does_not_allow_identity_origin_when_esignet_disabled(self):
+        with patch.object(config,'ESIGNET_DEMO_ENABLED',False):
+            settings=build_settings('http://127.0.0.1:8000','http://127.0.0.1:8000/exam-entry','test')
+            self.assertEqual([row['expression'] for row in settings['URLFilterRules']],['127.0.0.1:8000/*'])

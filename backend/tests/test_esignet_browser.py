@@ -19,13 +19,14 @@ class EsignetBrowserTests(unittest.TestCase):
         self.open()
         self.browser.command('Emulation.setDeviceMetricsOverride',{'width':390,'height':844,'deviceScaleFactor':1,'mobile':False})
         self.check('''
-configureIdentity('Fayda demo (eSignet)');showPanel('identity-panel');
-assert(el('identity-card-capture').hidden,'no card capture for demo');
-assert(el('identity-method-note').textContent.includes('does not verify a real Fayda'),'demo limitation visible');
+configureIdentity();showPanel('identity-panel');
+assert(!el('identity-card-capture'),'card capture was removed');
+assert(el('identity-auth-heading').textContent==='eSignet authentication (Fayda national Id simulation)','identity method labelled');
+assert(el('identity-photo-content').hidden,'session photo stays locked before authentication');
 assert(el('capture-selfie').disabled,'authenticate before session photo');
 routes['/api/candidate/identity/esignet/start']={status:503,body:{detail:'The demo identity service is unavailable. Try again.'}};
 el('authenticate-demo').scrollIntoView();el('authenticate-demo').click();
-await until(()=>el('demo-authentication-error').textContent.includes('Could not start'));
+await until(()=>el('demo-authentication-error').textContent.includes('Identity authentication is unavailable'));
 assert(el('demo-authentication-error').querySelector('.ab-feedback'),'shared local error');
 assert(!el('authenticate-demo').disabled,'retry available');
 assert(document.documentElement.scrollWidth<=innerWidth+2,'no narrow overflow');
@@ -34,7 +35,7 @@ routes['/api/candidate/exam-room']={status:200,body:{consented:true,identity_pol
 routes['/api/candidate/identity']={status:200,body:{status:'required',identity_policy:'Fayda demo (eSignet)',demo:{authenticated:true,name:'Daniel Bekele'}}};
 await prepareIdentity();assert(!el('capture-selfie').disabled,'authenticated tester can capture photo');
 assert(el('authenticate-demo').hidden,'successful authentication is not offered again');
-assert(el('identity-title').textContent==='Capture your session photo','next action is clear');
+assert(!el('identity-photo-content').hidden&&el('identity-auth-status').textContent==='Authenticated','session photo unlocked after authentication');
 assert(el('demo-authentication-state').textContent.includes('Daniel Bekele'),'authenticated name shown');
 capturedSelfie='TEST_PHOTO';el('verify-identity').disabled=false;
 routes['/api/candidate/identity/esignet/complete']={status:200,body:{status:'passed',verification_method:'esignet_demo'}};
@@ -42,8 +43,7 @@ let advanced=false;window.examFlow.openAfterDevices=async()=>{advanced=true};
 el('verify-identity').click();await until(()=>advanced);
 const sent=requests.find(r=>r.path.endsWith('/esignet/complete'));
 assert(JSON.stringify(JSON.parse(sent.body))===JSON.stringify({selfie:'TEST_PHOTO'}),'only photo submitted, no fake card');
-configureIdentity('Other ID cards');assert(!el('identity-card-capture').hidden,'normal card mode retained');
-assert(el('consent-id-type').textContent==='photo ID card','normal consent retained');
+assert(!el('identity-card-capture'),'no alternate card-verification flow');
 ''')
 
     def test_authenticated_return_restores_devices_and_opens_photo_without_another_otp(self):
@@ -62,7 +62,7 @@ navigator.mediaDevices.getUserMedia=async()=>stream;
 grantDevices=async()=>{mediaStream=stream;syncMediaState()};
 showPanel('device-panel');await restoreAuthenticatedIdentity({identity_policy:'Fayda demo (eSignet)'});
 await until(()=>!el('identity-panel').hidden&&!deviceContinuationInProgress);
-assert(el('identity-title').textContent==='Capture your session photo','return advances directly to session photo');
+assert(!el('identity-photo-content').hidden,'return advances directly to session photo');
 assert(el('authenticate-demo').hidden,'no repeated OTP action');
 assert(!el('capture-selfie').disabled,'camera capture is the next action');
 assert(!resumeAuthenticatedIdentity,'automatic continuation is consumed once');

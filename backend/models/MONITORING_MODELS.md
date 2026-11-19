@@ -37,7 +37,23 @@ Models are ignored by version control.
 No model scores are probabilities that a candidate cheated. Thresholds and
 camera sampling need validation with real volunteer exams before production.
 
-## Rebuilding the tablet/calculator detector
+## Downloading the models
+
+After installing `backend/requirements.txt`, run:
+
+```powershell
+python backend/fetch_monitoring_models.py
+python backend/fetch_identity_models.py
+```
+
+The monitoring script downloads YOLOX, Silero VAD, and the ready-to-use
+tablet/calculator ONNX model and manifest from the pinned `monitoring-models-v1`
+GitHub Release. It verifies checksums and checks the tablet/calculator model's
+metadata and inference output. Re-running it reuses files with valid checksums.
+No conversion tools or separate Python version are needed for normal setup.
+Windows FFmpeg is also downloaded; Linux/macOS require FFmpeg installed separately.
+
+## Rebuilding the tablet/calculator detector (maintainers only)
 
 Use an isolated Python 3.10 environment (the app environment stays unchanged):
 
