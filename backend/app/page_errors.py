@@ -1,9 +1,9 @@
 """Safe document errors; API and SEB client responses retain their contracts."""
 from pathlib import Path
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.exceptions import HTTPException
-from .config import FRONTEND_DIR
+from .config import COOKIE_NAME, EXAM_COOKIE_NAME, FRONTEND_DIR
 
 COPY = {
     401: ("Sign in to continue", "Your session has ended or you are not signed in.", "/", "Sign in"),
@@ -14,6 +14,12 @@ COPY = {
 
 async def page_http_error(request, exc: HTTPException):
     document = request.method == "GET" and "text/html" in request.headers.get("accept", "")
+    if exc.status_code == 401 and (exc.headers or {}).get("X-AssessBridge-Session-Ended") == "1":
+        response = RedirectResponse("/?session=expired", status_code=303) if document and not request.url.path.startswith('/api/') else await http_exception_handler(request, exc)
+        response.delete_cookie(COOKIE_NAME, path="/")
+        response.delete_cookie(EXAM_COOKIE_NAME, path="/")
+        response.headers['Cache-Control'] = 'no-store'
+        return response
     if not document or request.url.path.startswith("/api/"):
         return await http_exception_handler(request, exc)
     title, message, href, action = COPY.get(exc.status_code, (

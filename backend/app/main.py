@@ -218,6 +218,7 @@ def unauthorized() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Please sign in",
+        headers={"X-AssessBridge-Session-Ended": "1"},
     )
 
 
@@ -257,7 +258,7 @@ def current_user(request: Request) -> UserInfo:
             cursor.execute(
                 """SELECT u.id,
                           CASE WHEN u.role = 'candidate' AND u.email IS NOT NULL THEN u.email ELSE COALESCE(NULLIF(u.full_name,''),u.email,u.username) END AS username,
-                          u.role
+                          u.role, s.expires_at AS session_expires_at
                    FROM auth_sessions s
                    JOIN users u ON u.id = s.user_id
                    WHERE s.token_id = %s AND u.id = %s
@@ -271,6 +272,7 @@ def current_user(request: Request) -> UserInfo:
 
     if row is None:
         raise unauthorized()
+    request.state.session_expires_at = row.pop("session_expires_at")
     if row["role"] != "candidate": companies.membership(row["id"])
     return UserInfo.model_validate(row)
 
@@ -695,6 +697,7 @@ def start_exam(request: Request, response: Response, user: UserInfo = Depends(cu
             raise unavailable() from exc
         response.set_cookie(COOKIE_NAME, token, max_age=remaining_minutes * 60, httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
         response.set_cookie(EXAM_COOKIE_NAME, new_exam_access(user.id, exam["invitation_id"], expires_at, seb_verified=SEB_REQUIRED), max_age=remaining_minutes * 60, httponly=True, secure=COOKIE_SECURE, samesite="lax", path="/")
+        response.headers["X-AssessBridge-Session-Expires-At"] = expires_at.isoformat()
     response.headers["Cache-Control"] = "no-store"
     return state
 
@@ -1069,7 +1072,9 @@ def login(credentials: LoginCredentials, request: Request, response: Response) -
 
 
 @app.get("/api/auth/me", response_model=UserInfo)
-def me(user: UserInfo = Depends(current_user)) -> UserInfo:
+def me(request: Request, response: Response, user: UserInfo = Depends(current_user)) -> UserInfo:
+    response.headers["X-AssessBridge-Session-Expires-At"] = request.state.session_expires_at.replace(tzinfo=timezone.utc).isoformat()
+    response.headers["Cache-Control"] = "no-store"
     return user
 
 
