@@ -1,0 +1,15 @@
+/* One logo geometry and wordmark across account pages and workspaces. */
+.ab-brand-logo {
+  display: block;
+  width: 200px;
+  max-width: 100%;
+  height: auto;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+.brand:has(> .ab-brand-logo), .company-brand:has(> .ab-brand-logo), .room-header:has(> .ab-brand-logo) {
+  gap: 0;
+  text-decoration: none;
+}
+@media (max-width: 600px) { .ab-brand-logo { width: 180px; } }
+@media (max-width: 380px) { .ab-brand-logo { width: 160px; } }

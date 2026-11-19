@@ -104,7 +104,8 @@ def _status(cursor, session_id):
 
 
 def assessments(page=1, search="", audit="all", company_id=None):
-    where, params = ["a.ends_at<=UTC_TIMESTAMP()", "a.company_id=%s"], [company_id]
+    from .retention import live_sql
+    where, params = ["a.ends_at<=UTC_TIMESTAMP()", "a.company_id=%s",live_sql()], [company_id]
     if search:
         where.append("(LOCATE(LOWER(%s),LOWER(a.title))>0 OR LOCATE(LOWER(%s),LOWER(COALESCE(a.internal_reference,'')))>0)")
         params.extend([search, search])
@@ -267,7 +268,7 @@ def overview(company_id):
             raise HTTPException(403, 'Company access unavailable')
         cursor.execute("""SELECT a.id,a.title,a.internal_reference,a.ends_at,
                           EXISTS(SELECT 1 FROM assessment_result_publications p WHERE p.assessment_id=a.id AND p.is_legacy=FALSE) AS published
-                          FROM assessments a WHERE a.company_id=%s AND a.ends_at<=UTC_TIMESTAMP()
+                          FROM assessments a WHERE a.company_id=%s AND a.ends_at<=UTC_TIMESTAMP() AND NOT EXISTS(SELECT 1 FROM assessment_retention_policies rp WHERE rp.assessment_id=a.id AND rp.review_days IS NOT NULL AND DATE_ADD(a.ends_at,INTERVAL rp.review_days DAY)<=UTC_TIMESTAMP())
                           ORDER BY a.ends_at,a.id""", (company_id,))
         exams = cursor.fetchall()
         for exam in exams:

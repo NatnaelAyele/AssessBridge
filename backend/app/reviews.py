@@ -181,6 +181,22 @@ def _audit(cursor, session_id, employer_id, resource, source_ip):
                    (session_id, employer_id, resource, now(), source_ip))
 
 
+def decision_readiness(assessment_id, invitation_id, employer_id):
+    """Lightweight status polling without creating repeated report-access records."""
+    with database() as connection:
+        cursor = connection.cursor(dictionary=True)
+        session = _load(cursor, assessment_id, invitation_id, employer_id)
+        pending = evidence_pending(cursor, session)
+        result = {
+            "can_decide": bool(ended_at(session) and not session["published"] and not pending),
+            "published": session["published"],
+            "blocked_reason": pending if ended_at(session) else "Exam still in progress",
+            "revision": _version(cursor, session["id"]),
+        }
+        connection.commit()
+        return result
+
+
 def session_report(assessment_id, invitation_id, employer_id, source_ip=None, actor_id=None):
     with database() as connection:
         cursor = connection.cursor(dictionary=True)

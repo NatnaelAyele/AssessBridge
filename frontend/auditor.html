@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Auditor workspace | AssessBridge</title>
     <link rel="stylesheet" href="/css/employer.css?v=20261113-lifecycle" />
-    <link rel="stylesheet" href="/css/employer-review.css?v=20261114-readiness" />
+    <link rel="stylesheet" href="/css/employer-review.css?v=20261116-player-hover" />
     <link rel="stylesheet" href="/css/auditor.css?v=20261113-overview-focus" />
     <link rel="stylesheet" href="/css/casework.css?v=20261113" />
     <link rel="stylesheet" href="/css/auditor-workspace.css?v=20261113-refresh" />
@@ -13,16 +13,16 @@
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/audit-player.js?v=20261113-audit" defer></script>
-    <script src="/js/connectivity-case.js?v=20261114-readiness" defer></script>
+    <script src="/js/connectivity-case.js?v=20261115-review-sections" defer></script>
     <link rel="stylesheet" href="/css/reporting.css?v=20261114" />
     <script src="/js/reporting.js?v=20261114" defer></script>
-    <script src="/js/casework.js?v=20261113" defer></script>
+    <script src="/js/casework.js?v=20261115-review-sections" defer></script>
     <script src="/js/auditor.js?v=20261114-esignet-final" defer></script>
-  </head>
+  <link rel="stylesheet" href="/css/brand.css?v=20261115-bridge" /><link rel="icon" type="image/svg+xml" href="/assets/branding/mark-blue.svg" /></head>
   <body class="auditor-dashboard">
     <div class="app-shell">
       <aside class="sidebar" aria-label="Auditor navigation">
-        <div class="sidebar-top"><a class="brand" href="/auditor"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>AssessBridge</span></a><span class="workspace-label">AUDITOR WORKSPACE</span></div>
+        <div class="sidebar-top"><a class="brand" href="/auditor"><img class="ab-brand-logo" src="/assets/branding/logo-white.svg" alt="AssessBridge" width="570" height="128" /></a><span class="workspace-label">AUDITOR WORKSPACE</span></div>
         <nav class="side-nav" aria-label="Workspace sections">
           <button class="nav-item is-active" aria-current="page" data-main-tab="overview" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>Overview</button>
           <button class="nav-item" data-main-tab="auditing" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5H5v15h14V5h-4M9 3h6v4H9zM8 12l2 2 5-5"/></svg>Assessment auditing</button>
@@ -30,7 +30,7 @@
         </nav><div class="sidebar-bottom"><span class="auditor-role-mark" aria-hidden="true">AU</span><div><strong>Company auditor</strong><small>Audit &amp; publication workspace</small></div></div>
       </aside>
       <div class="workspace">
-        <header class="topbar"><a class="mobile-brand brand" href="/auditor"><span class="brand-mark" aria-hidden="true"><span></span><span></span></span><span>AssessBridge</span></a><span class="topbar-context">Employer Company Representative Auditor</span><div class="topbar-account"><span class="account-avatar" aria-hidden="true">AU</span><span id="account-name"></span><button id="sign-out" class="text-button" type="button">Sign out</button></div></header>
+        <header class="topbar"><a class="mobile-brand brand" href="/auditor"><img class="ab-brand-logo" src="/assets/branding/logo-blue.svg" alt="AssessBridge" width="570" height="128" /></a><span class="topbar-context">Employer Company Representative Auditor</span><div class="topbar-account"><span class="account-avatar" aria-hidden="true">AU</span><span id="account-name"></span><button id="sign-out" class="text-button" type="button">Sign out</button></div></header>
         <main class="main-content">
           <div class="page-heading"><div><p class="eyebrow">ASSESSBRIDGE / AUDITOR</p><h1 id="page-title">Overview</h1></div></div>
           <div id="auditor-notifications"></div><div id="page-message" class="editor-feedback-host"></div>

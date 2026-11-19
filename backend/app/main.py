@@ -174,9 +174,30 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="AssessBridge API", lifespan=lifespan)
+
+
+@app.get('/health/live', include_in_schema=False)
+def application_liveness(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    return {'status': 'ok'}
+
+
+@app.get('/health/ready', include_in_schema=False)
+def application_readiness(response: Response):
+    from .operations import dependency_status
+    ready = all(dependency_status().values())
+    response.status_code = 200 if ready else 503
+    response.headers['Cache-Control'] = 'no-store'
+    return {'status': 'ready' if ready else 'unavailable'}
 app.add_exception_handler(StarletteHTTPException, page_http_error)
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
+app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+
+
+@app.get('/favicon.ico', include_in_schema=False)
+def favicon():
+    return FileResponse(FRONTEND_DIR/'assets'/'branding'/'mark-blue.svg', media_type='image/svg+xml')
 
 
 @app.middleware("http")
@@ -850,6 +871,15 @@ def get_session_review(assessment_id: int, invitation_id: int, request: Request,
     return session_report(assessment_id, invitation_id, user.id, request.client.host if request.client else None)
 
 
+@app.get("/api/employer/assessments/{assessment_id}/invitations/{invitation_id}/review/readiness")
+def get_review_readiness(assessment_id: int, invitation_id: int, request: Request,
+                         response: Response, user: UserInfo = Depends(current_user)):
+    require_role(Role.employer_personnel, request, user)
+    response.headers["Cache-Control"] = "no-store"
+    from .reviews import decision_readiness
+    return decision_readiness(assessment_id, invitation_id, user.id)
+
+
 @app.post("/api/employer/assessments/{assessment_id}/invitations/{invitation_id}/review/decisions")
 def post_review_decision(assessment_id: int, invitation_id: int, payload: ReviewRequest, request: Request, user: UserInfo = Depends(current_user)):
     require_role(Role.employer_personnel, request, user)
@@ -1108,8 +1138,15 @@ def company_details(payload:companies.CompanyDetails,request:Request,user:UserIn
     require_role(Role.company_admin,request,user);return companies.update_company(user.id,payload)
 
 
+@app.get('/password-reset',include_in_schema=False)
+def password_reset_page():
+    return FileResponse(FRONTEND_DIR/'company-access.html',headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
+
+
+@app.post('/api/auth/password/request')
 @app.post('/api/company/password/request')
 def company_reset_request(payload:companies.ResetRequest):return companies.request_reset(payload)
+@app.post('/api/auth/password/reset')
 @app.post('/api/company/password/reset')
 def company_reset_password(payload:companies.Accept):return companies.reset_password(payload)
 

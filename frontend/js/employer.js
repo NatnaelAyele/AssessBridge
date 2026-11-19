@@ -412,7 +412,7 @@ function invitationPayload() {
     internal_reference: value("assessment-reference"),
     duration_minutes: duration,
     rules_text: selectedChoices(".prohibited-item").join(", "),
-    identity_policy: document.querySelector('input[name="identity-policy"]:checked').value,
+    identity_policy: "Fayda demo (eSignet)",
     questions,
     candidates,
     starts_at: `${start}:00+03:00`,
@@ -439,7 +439,7 @@ async function sendInvitations() {
   setEditorLocked(true);
   scope.show({ id: 'invite-status', target: '#invite-status', text: 'Sending invitations...', tone: 'loading' });
   let completed = false;
-  let safeError = "Could not confirm invitation delivery. Retry to check and send the remaining invitations.";
+  let safeError = "Could not confirm invitation delivery. Retry to check the outcome.";
   let retryAction = { label: 'Retry invitations', onClick: sendInvitations };
   try {
     const response = await fetch('/api/employer/invitations', {
@@ -449,10 +449,11 @@ async function sendInvitations() {
     if (!scope.active) return;
     if (!response.ok) {
       const safe = {
-        'Email delivery is not configured': 'Email delivery is unavailable. Configure email delivery, then retry.',
-        'SEB invitation setup is incomplete': 'SEB invitation setup is unavailable. Check the setup, then retry.',
+        'Email delivery is not configured': 'Email delivery is temporarily unavailable. Try again later.',
+        'SEB invitation setup is incomplete': 'Invitations are temporarily unavailable. Try again later.',
         'Invitation request does not match the saved assessment': 'This request differs from the saved assessment. Open Assessment detail to check its invitations.',
         'Results are published. Invitations cannot be changed.': 'Results are published. Invitations cannot be changed.',
+        'This assessment was saved previously. Open Assessment detail to check its invitations.': 'This assessment was saved previously. Open Assessment detail to check its invitations.',
       };
       // Validation and setup checks occur before saving. A new draft can be corrected safely.
       if (!retrying && !invitationResult && (response.status === 422 || ['Email delivery is not configured', 'SEB invitation setup is incomplete'].includes(result.detail))) {
@@ -462,7 +463,7 @@ async function sendInvitations() {
       safeError = safe[result.detail] || (response.status === 422
         ? 'Check the assessment details and schedule, then try again.'
         : response.status === 401 || response.status === 403 ? 'Your session cannot send invitations. Sign in again.'
-          : 'Could not confirm invitation delivery. Retry to check and send the remaining invitations.');
+          : 'Could not confirm invitation delivery. Retry to check the outcome.');
       const scheduleStarted = response.status === 422 && Array.isArray(result.detail)
         && result.detail.some(item => typeof item.msg === 'string' && item.msg.includes('Assessment start must be in the future'));
       if (retrying && scheduleStarted) {
@@ -471,25 +472,42 @@ async function sendInvitations() {
       }
       throw new Error(safeError);
     }
+    if (result.saved === false && result.assessment_id === null) {
+      // A confirmed cancellation is safe to edit. Unknown outcomes retain the
+      // original request until a retry confirms whether it was committed.
+      submittedPayload = null;
+      invitationResult = null;
+      invitationRequestKey = crypto.randomUUID();
+      setEditorLocked(false);
+      byId('editor-state').textContent = 'Unsaved draft';
+      delete byId('editor-state').dataset.tone;
+      const failure = result.failed_email
+        ? `Could not send the invitation to ${result.failed_email}. Assessment not saved.`
+        : 'Invitations could not be sent. Assessment not saved.';
+      // Only show approved user-facing copy, including when an older server
+      // returns technical details in its message field.
+      const deliveryReason = result.delivery_error?.code === 'recipient_rejected'
+        ? ' Check the candidate email address and try again.'
+        : ' Email delivery is temporarily unavailable. Try again later.';
+      scope.show({ id: 'invite-status', target: '#invite-status', tone: 'error',
+        text: failure + deliveryReason + (result.cancelled_deliveries > 0 ? ' Earlier invitations are invalid. Resend to everyone.' : ''),
+        action: { label: 'Try again', onClick: sendInvitations } });
+      return;
+    }
     if (!Number.isInteger(result.sent) || !Number.isInteger(result.failed) || !Number.isInteger(result.pending)
         || result.sent + result.failed + result.pending !== payload.candidates.length || !result.assessment_id
         || [result.sent, result.failed, result.pending].some(count => count < 0)) {
-      throw new Error('Could not confirm invitation delivery. Retry to check and send the remaining invitations.');
+      throw new Error('Could not confirm invitation delivery. Retry to check the outcome.');
     }
+    completed = result.sent === payload.candidates.length && !result.failed && !result.pending;
+    if (!completed) throw new Error(safeError);
     invitationResult = result;
     selectedAssessmentId = result.assessment_id;
     byId('editor-state').textContent = 'Saved assessment';
     byId('editor-state').dataset.tone = 'success';
     loadAssessments(1, result.assessment_id);
-    completed = result.sent === payload.candidates.length && !result.failed && !result.pending;
-    if (completed) {
-      resetEditor();
-      employerNotices.notify({ id: 'invitations-sent', text: 'Assessment saved. Invitations sent.' });
-    } else {
-      scope.show({ id: 'invite-status', target: '#invite-status', tone: 'error',
-        text: `Assessment saved. ${result.sent} of ${payload.candidates.length} invitations sent.\n${result.failed} failed. ${result.pending} pending.`,
-        action: { label: 'Retry failed invitations', onClick: sendInvitations } });
-    }
+    resetEditor();
+    employerNotices.notify({ id: 'invitations-sent', text: 'Assessment saved. Invitations sent.' });
   } catch (error) {
     if (scope.active) scope.show({ id: 'invite-status', target: '#invite-status', tone: 'error',
       text: safeError,
@@ -498,7 +516,7 @@ async function sendInvitations() {
     button.removeAttribute('aria-busy');
     byId('new-assessment').disabled = false;
     if (!completed && scope.active) {
-      button.textContent = submittedPayload ? 'Retry failed invitations' : 'Confirm and send invitations';
+      button.textContent = submittedPayload ? 'Retry invitations' : 'Confirm and send invitations';
       button.dataset.state = 'error';
       button.disabled = false;
     }
@@ -613,8 +631,7 @@ function renderSummary() {
   const end = value("schedule-end");
   byId("summary-schedule").textContent = start || end ? `${formatDate(start)} – ${formatDate(end)}` : "Not set";
   const prohibitedItems = selectedChoices(".prohibited-item");
-  const identityPolicy = document.querySelector('input[name="identity-policy"]:checked').value;
-  const identityLabel = identityPolicy === 'Fayda demo (eSignet)' ? 'Fayda demo authentication' : identityPolicy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
+  const identityLabel = 'eSignet authentication (Fayda national ID simulation)';
   byId("summary-rules").textContent = `${prohibitedItems.length} prohibited · ${identityLabel}`;
   const questionList = byId("summary-question-list");
   const candidateList = byId("summary-candidate-list");
@@ -656,7 +673,7 @@ function renderDetail(assessment) {
   detail.dataset.endsAt = assessment.ends_at;
   byId("detail-title").textContent = assessment.title;
   byId("detail-description").textContent = assessment.description || "No instructions provided.";
-  byId("detail-identity").textContent = assessment.identity_policy === 'Fayda demo (eSignet)' ? 'Fayda demo authentication' : assessment.identity_policy === "Other ID cards" ? "Other ID cards" : "Fayda ID card";
+  byId("detail-identity").textContent = assessment.identity_policy === 'Fayda demo (eSignet)' ? 'eSignet authentication (Fayda national ID simulation)' : 'Previous identity verification';
   byId("detail-code").textContent = assessment.internal_reference || "Not set";
   byId("detail-duration").textContent = `${assessment.duration_minutes} min`;
   byId("detail-questions").textContent = String(assessment.question_count);
@@ -815,7 +832,7 @@ function resetEditor() {
     "question-prompt", "question-key",
   ]) byId(id).value = "";
   document.querySelectorAll(".prohibited-item").forEach((input) => { input.checked = false; });
-  document.querySelector('input[name="identity-policy"][value="Fayda ID"]').checked = true;
+
   document.querySelectorAll(".mcq-option").forEach((input) => { input.value = ""; });
   document.querySelectorAll('input[name="correct-option"]').forEach((input) => { input.checked = false; });
   byId("question-type").value = "written";
@@ -935,10 +952,7 @@ fetch("/api/auth/me", { credentials: "same-origin" })
   });
 
 addRosterRow();
-fetch('/api/identity-options', {credentials:'same-origin'}).then(response => response.ok ? response.json() : {}).then(options => {
-  const option = byId('demo-identity-option');
-  if (option) option.hidden = !options.esignet_demo;
-}).catch(() => {});
+
 updateRoster();
 showStep("basics");
 syncQuestionType();

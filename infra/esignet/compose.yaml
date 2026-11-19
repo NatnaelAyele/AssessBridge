@@ -98,6 +98,10 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./start-ui.sh:/opt/assessbridge/start-ui.sh:ro
       - ./demo-login.js:/usr/share/nginx/html/assessbridge-demo.js:ro
+      - ./demo-login.css:/usr/share/nginx/html/assessbridge-demo.css:ro
+      - ../../frontend/js/ui-messages.js:/usr/share/nginx/html/assessbridge-feedback.js:ro
+      - ../../frontend/css/ui-messages.css:/usr/share/nginx/html/assessbridge-feedback.css:ro
+      - ../../var/esignet/ui-config.js:/usr/share/nginx/html/assessbridge-config.js:ro
     depends_on:
       - esignet
     restart: unless-stopped

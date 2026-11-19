@@ -58,7 +58,7 @@ def mail(email,token,kind,company):
         settings=MailSettings.from_environment()
         message=EmailMessage(); message['From']=settings.sender;message['To']=email
         message['Subject']='AssessBridge: '+('Verify company registration' if kind=='verify' else 'Reset your password' if kind=='reset' else 'Join '+company)
-        link=urljoin(EXAM_ENTRY_URL,'/company-access')+'#'+kind+'='+token
+        link=urljoin(EXAM_ENTRY_URL,'/password-reset' if kind=='reset' else '/company-access')+'#'+kind+'='+token
         message.set_content('Open this link to continue: '+link+'\n\nThis link expires in 48 hours. If you did not expect this email, ignore it.')
         _send_message(settings,message)
     except Exception as exc: raise HTTPException(503,'Could not send the email. Try again.') from exc
@@ -204,18 +204,24 @@ def request_reset(payload):
     token=secrets.token_urlsafe(32)
     with database() as db:
         c=db.cursor(dictionary=True)
-        c.execute("SELECT u.id FROM users u JOIN companies co ON co.id=u.company_id WHERE u.email=%s AND u.is_active=TRUE AND co.is_active=TRUE",(payload.email,));r=c.fetchone()
+        c.execute("""SELECT u.id FROM users u LEFT JOIN companies co ON co.id=u.company_id
+                     WHERE u.email=%s AND u.is_active=TRUE AND (u.role='candidate'
+                     OR (u.role IN ('company_admin','employer_personnel','auditor') AND co.is_active=TRUE))""",(payload.email,));r=c.fetchone()
         if r:
             c.execute('INSERT INTO company_password_resets(user_id,token_hash,expires_at) VALUES(%s,%s,UTC_TIMESTAMP()+INTERVAL 48 HOUR) ON DUPLICATE KEY UPDATE token_hash=VALUES(token_hash),expires_at=VALUES(expires_at)',(r['id'],digest(token)))
             mail(payload.email,token,'reset','');db.commit()
-    return {'message':'If an active staff account uses this email, a reset link has been sent.'}
+    return {'message':'If an active account uses this email, a reset link has been sent.'}
 
 def reset_password(payload):
     with database() as db:
         c=db.cursor(dictionary=True)
-        c.execute('SELECT r.user_id,u.company_id FROM company_password_resets r JOIN users u ON u.id=r.user_id JOIN companies co ON co.id=u.company_id WHERE r.token_hash=%s AND r.expires_at>UTC_TIMESTAMP() AND u.is_active=TRUE AND co.is_active=TRUE FOR UPDATE',(digest(payload.token),));r=c.fetchone()
+        c.execute("""SELECT r.user_id,u.company_id,u.role FROM company_password_resets r JOIN users u ON u.id=r.user_id
+                     LEFT JOIN companies co ON co.id=u.company_id WHERE r.token_hash=%s AND r.expires_at>UTC_TIMESTAMP()
+                     AND u.is_active=TRUE AND (u.role='candidate'
+                     OR (u.role IN ('company_admin','employer_personnel','auditor') AND co.is_active=TRUE)) FOR UPDATE""",(digest(payload.token),));r=c.fetchone()
         if not r:raise HTTPException(400,'This reset link is invalid or expired.')
         c.execute('UPDATE users SET password_hash=%s WHERE id=%s',(hash_password(payload.password),r['user_id']))
         c.execute('DELETE FROM auth_sessions WHERE user_id=%s',(r['user_id'],));c.execute('DELETE FROM company_password_resets WHERE user_id=%s',(r['user_id'],))
-        event(c,r['company_id'],r['user_id'],'password_reset',r['user_id']);db.commit()
+        if r['role'] in STAFF:event(c,r['company_id'],r['user_id'],'password_reset',r['user_id'])
+        db.commit()
     return {'message':'Password updated. Sign in with your new password.'}

@@ -9,14 +9,13 @@
     <link rel="stylesheet" href="/css/ui-messages.css?v=20261113-top-center" />
     <script src="/js/ui-messages.js?v=20261113-audit" defer></script>
     <script src="/js/account-feedback.js?v=20261112" defer></script>
-    <script src="/js/login.js?v=20261113-companies" defer></script>
-  </head>
+    <script src="/js/login.js?v=20261116-password-controls" defer></script>
+  <link rel="stylesheet" href="/css/brand.css?v=20261115-bridge" /><link rel="icon" type="image/svg+xml" href="/assets/branding/mark-blue.svg" /><link rel="stylesheet" href="/css/password-fields.css?v=20261116" /><script src="/js/password-fields.js?v=20261116" defer></script></head>
   <body>
     <main class="page-shell">
       <section class="intro-panel" aria-label="About AssessBridge">
         <div class="brand brand-light">
-          <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
-          <span>AssessBridge</span>
+          <img class="ab-brand-logo" src="/assets/branding/logo-white.svg" alt="AssessBridge" width="570" height="128" />
         </div>
 
         <div class="intro-content">
@@ -37,8 +36,7 @@
 
       <section class="login-panel" aria-labelledby="login-heading">
         <div class="mobile-brand brand">
-          <span class="brand-mark" aria-hidden="true"><span></span><span></span></span>
-          <span>AssessBridge</span>
+          <img class="ab-brand-logo" src="/assets/branding/logo-blue.svg" alt="AssessBridge" width="570" height="128" />
         </div>
 
         <div class="login-content">
@@ -61,18 +59,10 @@
 
             <div class="field">
               <label for="password">Password</label>
-              <div class="password-field">
-                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
-                <button id="toggle-password" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M2.5 12s3.4-5 9.5-5 9.5 5 9.5 5-3.4 5-9.5 5-9.5-5-9.5-5Z"></path>
-                    <circle cx="12" cy="12" r="2.5"></circle>
-                  </svg>
-                </button>
-              </div>
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
             </div>
 
-            <div class="login-recovery"><a href="/company-access?reset=1">Forgot staff password?</a></div>
+            <div class="login-recovery"><a href="/password-reset">Forgot password?</a></div>
             <button class="sign-in-button" type="submit">Sign in <span aria-hidden="true">→</span></button>
             <div id="form-message"></div>
           </form>

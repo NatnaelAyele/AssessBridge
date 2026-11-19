@@ -7,7 +7,6 @@ button { cursor: pointer; }
 .app-shell { min-height: 100vh; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; min-height: 78px; padding: 0 clamp(20px, 6vw, 92px); border-bottom: 1px solid #e1e9f3; background: #fff; }
 .brand { display: inline-flex; align-items: center; gap: 11px; color: #0d4d9c; font-size: 21px; font-weight: 800; letter-spacing: -.04em; text-decoration: none; }
-.brand-mark { display: grid; width: 35px; height: 35px; place-items: center; border-radius: 10px; background: #0b58ad; color: #fff; font-size: 20px; }
 .account { display: flex; align-items: center; gap: 20px; color: #3c4e68; font-size: 14px; }
 .account { min-width: 0; }
 #account-name { min-width: 0; overflow-wrap: anywhere; }

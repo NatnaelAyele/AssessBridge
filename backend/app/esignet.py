@@ -93,8 +93,8 @@ def _exam(cursor, invitation, candidate, policy):
                  FROM assessment_invitations i JOIN assessments a ON a.id=i.assessment_id
                  WHERE i.id=%s AND i.candidate_user_id=%s AND i.delivery_status='sent' FOR UPDATE''', (candidate,policy,invitation,candidate))
     row = cursor.fetchone()
-    if not row or row['identity_policy'] != POLICY:
-        raise HTTPException(403, 'This exam does not use demo identity authentication')
+    if not row:
+        raise HTTPException(403, 'Exam invitation is unavailable')
     if row['started']:
         raise HTTPException(409, 'The exam has already started')
     if not row['starts_at'] <= now() < row['ends_at']:
@@ -164,7 +164,10 @@ def finish(state, code, provider_error, invitation, candidate, fingerprint, poli
         exam = _exam(c,invitation,candidate,policy)
         c.execute('SELECT * FROM assessment_identity_auth_flows WHERE state_hash=%s FOR UPDATE',(hashlib.sha256(state.encode()).hexdigest(),))
         flow = c.fetchone()
-        if not flow or flow['status']!='pending' or flow['expires_at']<=now() or flow['candidate_user_id']!=candidate or flow['invitation_id']!=invitation or flow['access_fingerprint']!=fingerprint:
+        bound = flow and flow['candidate_user_id']==candidate and flow['invitation_id']==invitation and flow['access_fingerprint']==fingerprint
+        if bound and flow['status']=='pending' and flow['expires_at']<=now():
+            c.execute("UPDATE assessment_identity_auth_flows SET status='failed',failure_reason='expired' WHERE id=%s",(flow['id'],));db.commit()
+        if not bound or flow['status']!='pending' or flow['expires_at']<=now():
             raise HTTPException(403, 'This identity authentication request has expired or was already used. Start again.')
         c.execute("UPDATE assessment_identity_auth_flows SET status='exchanging' WHERE id=%s",(flow['id'],));db.commit()
     try:
@@ -218,8 +221,22 @@ def finish(state, code, provider_error, invitation, candidate, fingerprint, poli
                 raise HTTPException(403,'The identity authentication request expired. Try again.')
             db.commit()
     except Exception as exc:
+        reason = 'authentication_failed'
+        detail = str(exc.detail) if isinstance(exc,HTTPException) else ''
+        if provider_error in ('access_denied','consent_denied','user_cancelled'):
+            reason = 'cancelled'
+        elif provider_error in ('server_error','temporarily_unavailable') or isinstance(exc,HTTPException) and exc.status_code==503:
+            reason = 'service_unavailable'
+        elif 'test name' in detail:
+            reason = 'name_mismatch'
+        elif 'did not share a name' in detail:
+            reason = 'sharing_required'
+        elif 'expired' in detail:
+            reason = 'expired'
+        elif 'invitation changed' in detail.lower():
+            reason = 'invitation_changed'
         with database() as db:
-            c=db.cursor();c.execute("UPDATE assessment_identity_auth_flows SET status='failed',failure_reason=%s WHERE id=%s",('name_mismatch' if isinstance(exc,HTTPException) and 'test name' in str(exc.detail) else 'authentication_failed',flow['id']));db.commit()
+            c=db.cursor();c.execute("UPDATE assessment_identity_auth_flows SET status='failed',failure_reason=%s WHERE id=%s",(reason,flow['id']));db.commit()
         raise
 
 
@@ -230,8 +247,15 @@ def state(invitation,candidate,fingerprint):
         flow=c.fetchone()
     current = flow and flow['expires_at']>now()
     message = None
-    if current and flow['status']=='failed':
-        message = 'The authenticated test name does not match the invitation.' if flow['failure_reason']=='name_mismatch' else 'Authentication did not finish. Try again.'
+    if flow and flow['status']=='failed':
+        message = {'name_mismatch':'The authenticated name does not match your invitation. Start again with the identity named in your invitation.',
+                   'cancelled':'Authentication cancelled. Try again when you are ready.',
+                   'expired':'Your authentication session expired. Start again.',
+                   'sharing_required':'Allow name sharing in eSignet to continue. Start again.',
+                   'invitation_changed':'Your invitation changed. Start authentication again.',
+                   'service_unavailable':'Could not connect to eSignet. Try again.'}.get(flow['failure_reason'],'Authentication did not finish. Try again.')
+    elif flow and not current and flow['status'] in ('pending','authenticated','exchanging'):
+        message = 'Your authentication session expired. Start again.'
     return {'enabled':enabled(),'authenticated':bool(current and flow['status']=='authenticated'),
             'name':flow['authenticated_name'] if current and flow['status']=='authenticated' else None,'message':message}
 

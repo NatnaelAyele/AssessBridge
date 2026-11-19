@@ -19,10 +19,6 @@ a { color: inherit; text-decoration: none; }
 .sidebar { display: flex; flex-direction: column; padding: 30px 18px 24px; background: linear-gradient(165deg, #0b3777 0%, #0e4b99 70%, #0d5bad 100%); color: #fff; }
 .sidebar-top { padding: 5px 11px 34px; }
 .brand { display: inline-flex; align-items: center; gap: 11px; white-space: nowrap; font-size: 20px; font-weight: 700; letter-spacing: -.04em; }
-.brand-mark { position: relative; display: inline-block; width: 32px; height: 32px; flex: none; border: 2px solid currentColor; border-radius: 9px; transform: rotate(-8deg); }
-.brand-mark span { position: absolute; width: 11px; height: 12px; border-right: 3px solid currentColor; border-bottom: 3px solid currentColor; transform: rotate(45deg); }
-.brand-mark span:first-child { left: 5px; top: 4px; }
-.brand-mark span:last-child { left: 13px; top: 11px; }
 .workspace-label { display: block; margin: 34px 0 0 1px; color: #b4d4fc; font-size: 10px; font-weight: 800; letter-spacing: .16em; }
 .side-nav { display: grid; gap: 5px; }
 .nav-item { display: flex; align-items: center; gap: 13px; width: 100%; padding: 13px 14px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #d9e9fc; font-size: 14px; font-weight: 600; text-align: left; }

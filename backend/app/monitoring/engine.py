@@ -3,6 +3,9 @@
 from functools import lru_cache
 import threading
 import json
+import os
+import math
+import urllib.request
 
 import cv2
 import numpy as np
@@ -10,7 +13,7 @@ import onnxruntime as ort
 
 from ..identity import MODEL_DIR, _face_models, _model_lock
 
-MODEL_VERSION = "yunet-2023mar+sface-2021dec+yolox-s-0.1.1+rtdetr-r18-o365v2+silero-066409f+policy2"
+MODEL_VERSION = "yunet-2023mar+sface-2021dec+yolox-s-0.1.1+rtdetr-r18-o365v2+silero-066409f+policy2.4"
 PROHIBITED_OBJECTS = {"Mobile phone": "mobile_phone", "Books": "book", "Tablet": "tablet", "Calculator": "calculator"}
 OBJECTS365_CLASSES = {243: "tablet", 316: "calculator"}
 
@@ -20,6 +23,12 @@ def session(name):
     options = ort.SessionOptions()
     options.intra_op_num_threads = 2
     options.inter_op_num_threads = 1
+    if os.getenv("MONITORING_LOW_MEMORY", "false").lower() == "true":
+        # Bound retained allocations on small CPU hosts. Keep the same model,
+        # inputs and outputs; trade reusable arenas/packed weights for memory.
+        options.enable_cpu_mem_arena = False
+        options.enable_mem_pattern = False
+        options.add_session_config_entry("session.disable_prepacking", "1")
     model = ort.InferenceSession(str(MODEL_DIR / name), sess_options=options, providers=["CPUExecutionProvider"])
     if name == "rtdetr_r18vd_objects365.onnx":
         meta = model.get_modelmeta().custom_metadata_map
@@ -61,6 +70,35 @@ def objects(image):
 
 
 def extended_objects(image):
+    endpoint = os.getenv("MONITORING_EXTENDED_URL", "").strip()
+    if not endpoint:
+        return local_extended_objects(image)
+    token = os.getenv("MONITORING_DETECTOR_TOKEN", "")
+    if not endpoint.startswith("https://") or len(token) < 32:
+        raise RuntimeError("Extended detector transport is not configured securely")
+    ok, encoded = cv2.imencode(".png", image, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+    if not ok:
+        raise RuntimeError("Could not encode detector input")
+    request = urllib.request.Request(endpoint, data=encoded.tobytes(), headers={
+        "Content-Type": "image/png", "X-AssessBridge-Detector-Token": token,
+    })
+    with urllib.request.urlopen(request, timeout=75) as response:
+        payload = response.read(262145)
+    if len(payload) > 262144:
+        raise RuntimeError("Extended detector response exceeds limit")
+    result = json.loads(payload)
+    if result.get("model") != "rtdetr-r18-o365v2" or not isinstance(result.get("detections"), list) or len(result["detections"]) > 600:
+        raise RuntimeError("Extended detector response is invalid")
+    for item in result["detections"]:
+        if (item.get("label") not in {"tablet", "calculator"}
+                or not isinstance(item.get("confidence"), (int, float)) or not 0 <= item["confidence"] <= 1
+                or not isinstance(item.get("box"), list) or len(item["box"]) != 4
+                or not all(isinstance(v, (int,float)) and math.isfinite(v) for v in item["box"])):
+            raise RuntimeError("Extended detector output is invalid")
+    return result["detections"]
+
+
+def local_extended_objects(image):
     """Objects365 v2 RT-DETR raw boxes/logits, decoded with focal-loss sigmoid."""
     height, width = image.shape[:2]
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -127,6 +165,7 @@ class Vision:
             detections += extended_objects(image)
         signals = {}
         metrics = {"objects": detections, "signals": signals, "identity_checked": False,
+                   "framing_state": "unavailable",
                    "reference_available": self.reference_feature is not None}
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         tiny = cv2.resize(gray, (64, 36)).astype(np.float32)
@@ -178,7 +217,10 @@ class Vision:
             if self.previous_center is None:
                 self.previous_center = center
             if np.linalg.norm(center-self.previous_center) > .25:
+                metrics["framing_state"] = "changed"
                 signals["framing_changed"] = 1.0
+            else:
+                metrics["framing_state"] = "normal"
             # Angled, blurred, or obscured faces are not identity-mismatch evidence.
             if self.reference_feature is not None and abs(pose[0]) < .35 and .10 < pose[1] < .90:
                 feature = recognizer.feature(recognizer.alignCrop(image, face))

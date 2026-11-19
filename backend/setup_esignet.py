@@ -99,15 +99,19 @@ def prepare(issuer, app_url):
     flow='\n'.join(line for line in flow.split('\n') if line.strip()!='- *captcha_box' and not line.strip().startswith('- *login_id_'))
     flow=flow.replace('label: "{{t(input:uin_label)}}"','label: "Test identity number"')
     flow=flow.replace('placeholder: "{{t(input:uin_placeholder)}}"','placeholder: "Enter the test identity number"')
+    flow=flow.replace('value: ^[0-9]+$', 'value: ^[0-9]{12}$')
+    flow=flow.replace('value: 16\n      message: "validation.uin.length"','value: 12\n      message: "validation.uin.length"')
+    flow=flow.replace('value: 10\n      message: "validation.uin.length"','value: 12\n      message: "validation.uin.length"')
     # Preserve OTP_INPUT: the provider uses its type to classify sensitive
     # credentials. A plain text field would not reach the OTP authenticator.
     flow=flow.replace('label: "{{t(otp:otp_sent_msg)}}"','label: "Demo OTP (111111)"')
     (RUNTIME/'flow.yaml').write_text(flow,encoding='utf-8')
+    (RUNTIME/'ui-config.js').write_text('window.assessbridgeIdentityProvider = '+json.dumps({'returnUrl':app_url+'/exam-room'})+';\n',encoding='utf-8')
     client = 'assessbridge-demo'
     callback = app_url + '/identity/esignet/callback'
     name = json.dumps({'eng': 'AssessBridge demo'})
     fields = {'id': client, 'name': name, 'rp_id': 'assessbridge-demo',
-              'logo_uri': app_url + '/favicon.ico', 'redirect_uris': json.dumps([callback]),
+              'logo_uri': app_url + '/assets/branding/mark-blue.svg', 'redirect_uris': json.dumps([callback]),
               'claims': json.dumps(['name']), 'acr_values': json.dumps(['mosip:idp:acr:generated-code']),
               'public_key': json.dumps(jwk, sort_keys=True), 'public_key_hash': hashlib.sha256(json.dumps(jwk, sort_keys=True).encode()).hexdigest(),
               'grant_types': json.dumps(['authorization_code']), 'auth_methods': json.dumps(['private_key_jwt']),

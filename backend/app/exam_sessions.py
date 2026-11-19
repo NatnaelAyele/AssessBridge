@@ -135,6 +135,8 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
     try:
         with database() as connection:
             cursor = connection.cursor(dictionary=True)
+            from .operations import acquire_admission, require_capacity
+            acquire_admission(cursor)
             exam = load_exam(cursor, invitation_id)
             session = load_session(cursor, invitation_id)
             require_current_client(session, client_id)
@@ -156,9 +158,8 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
                 if cursor.fetchone() is None:
                     raise HTTPException(status_code=403, detail="Agreement is required before starting")
                 from . import esignet
-                if exam['identity_policy'] == esignet.POLICY:
-                    esignet.require_enabled()
-                method = esignet.METHOD if exam['identity_policy'] == esignet.POLICY else 'card_face'
+                esignet.require_enabled()
+                method = esignet.METHOD
                 cursor.execute(
                     """SELECT 1 FROM assessment_identity_checks
                        WHERE invitation_id = %s AND candidate_user_id = %s
@@ -169,6 +170,7 @@ def start_exam_attempt(invitation_id: int, candidate_user_id: int, policy_versio
                     raise HTTPException(status_code=403, detail="Complete identity verification before starting")
                 from .readiness import require_complete
                 require_complete(cursor, exam, candidate_user_id, client_id, identity_fingerprint, policy_version)
+                require_capacity(cursor, exam['duration_minutes'])
                 deadline = min(now + timedelta(minutes=exam["duration_minutes"]), exam["ends_at"])
                 cursor.execute(
                     """INSERT INTO assessment_exam_sessions

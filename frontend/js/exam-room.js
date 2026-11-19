@@ -203,6 +203,7 @@ async function continueAfterDevices() {
     resumeAuthenticatedIdentity = false;
   } catch (error) {
     resumeAuthenticatedIdentity = false;
+    showPanel("device-panel");
     setDeviceError(error.message);
   } finally {
     deviceContinuationInProgress = false;
@@ -212,17 +213,33 @@ async function continueAfterDevices() {
 byId("continue-devices").addEventListener("click", continueAfterDevices);
 
 async function restoreAuthenticatedIdentity(exam) {
-  if (exam.identity_policy !== 'Fayda demo (eSignet)') return;
   const response = await roomRequest('/api/candidate/identity');
   const identity = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(candidateFeedback.serverError(response, identity, 'Could not restore your identity authentication. Try again.'));
-  if (identity.demo?.authenticated || identity.status === 'passed') {
+  if (identity.demo?.authenticated || identity.status === 'passed' || identity.demo?.message) {
     resumeAuthenticatedIdentity = true;
     setDeviceError('');
     await grantDevices();
-  } else if (identity.demo?.message) {
-    setDeviceError(identity.demo.message);
+    // A replacement camera track can briefly remain muted after permission is
+    // restored. Keep loading visible until it becomes usable or needs help.
+    if (mediaStream && !mediaReady()) {
+      await new Promise(resolve => {
+        const tracks = mediaStream.getTracks();
+        const finish = () => {
+          clearTimeout(timeout);
+          for (const track of tracks) track.removeEventListener?.('unmute', check);
+          resolve();
+        };
+        const check = () => { if (mediaReady()) finish(); };
+        const timeout = setTimeout(finish, 2500);
+        for (const track of tracks) track.addEventListener('unmute', check);
+        check();
+      });
+    }
+    if (!mediaReady()) showPanel('device-panel');
+    return true;
   }
+  return false;
 }
 
 byId("agree").addEventListener("change", () => {
@@ -285,9 +302,11 @@ roomScriptsReady.then(() => roomRequest("/api/candidate/exam-room"))
     }
     const submitted = await window.examFlow.bootstrap();
     if (!submitted) {
-      showPanel("device-panel");
-      checkAvailability();
-      await restoreAuthenticatedIdentity(exam);
+      const restored = await restoreAuthenticatedIdentity(exam);
+      if (!restored) {
+        showPanel("device-panel");
+        checkAvailability();
+      }
     }
   })
   .catch((error) => showError(error.message));
