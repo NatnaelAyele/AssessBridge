@@ -5,8 +5,8 @@
 
 # AssessBridge
 
-1. **Live application:** [natnael.tech](LIVE_APPLICATION_URL)
-2. **Demo video:** (DEMO_VIDEO_URL)
+1. **Live application:** [Open AssessBridge](https://natnael.tech)
+2. **Demo video:** [Watch the walkthrough](https://youtu.be/HXRPYyCQ7KI)
 
 AssessBridge is a company-scoped assessment platform for creating examinations, monitoring candidate sessions, reviewing evidence, auditing outcomes and publishing results.
 
