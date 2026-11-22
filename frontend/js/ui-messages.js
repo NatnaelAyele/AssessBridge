@@ -143,7 +143,7 @@
       if (options.title !== undefined && typeof options.title !== 'string') throw new TypeError('Feedback title must be plain text');
       const tone = options.tone || (kind === 'temporary' ? 'success' : 'info');
       if (!tones.has(tone)) throw new TypeError('Unknown feedback tone');
-      if (kind === 'temporary' && tone !== 'success') throw new TypeError('Errors and warnings must be persistent');
+      if (kind === 'temporary' && tone !== 'success' && !(tone === 'error' && options.dismissible === true)) throw new TypeError('Errors and warnings must be persistent');
       if (kind === 'temporary' && options.blocking) throw new TypeError('Required outcomes must be persistent');
       if (options.blocking && options.dismissible) throw new TypeError('An active blocker cannot be dismissed');
       if (options.action) {
