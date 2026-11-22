@@ -5,6 +5,9 @@
 
 # AssessBridge
 
+1. **Live application:** [Add link](LIVE_APPLICATION_URL)
+2. **Demo video:** [Add link](DEMO_VIDEO_URL)
+
 AssessBridge is a company-scoped assessment platform for creating examinations, monitoring candidate sessions, reviewing evidence, auditing outcomes and publishing results.
 
 The application combines scheduled assessments, secure exam entry, audiovisual recording and automated integrity observations with a human review and audit process. Identity authentication uses an eSignet simulation populated with fictional identities. A live session photo provides the reference for identity-continuity monitoring.
@@ -14,6 +17,7 @@ The application combines scheduled assessments, secure exam entry, audiovisual r
 - [Features](#features)
 - [Roles](#roles)
 - [Technology](#technology)
+- [Monitoring reference](#monitoring-reference)
 - [Local setup](#local-setup)
 - [Fictional test identities](#fictional-test-identities)
 - [Running the tests](#running-the-tests)
@@ -59,6 +63,91 @@ Staff access is scoped to the company that owns the assessment. Administrator, r
 | Candidate exam environment | Safe Exam Browser; an optional browser-only development mode is available |
 
 FastAPI serves both the frontend and API. A separate, automatically supervised Python worker analyses uploaded recordings. Docker Compose runs the identity services; it does not start the main application or its MySQL server. PostgreSQL is supplied inside that identity stack and does not need a separate host installation.
+
+## Monitoring reference
+
+AssessBridge records automated observations for human review. An observation is not a finding of misconduct and does not automatically disqualify a candidate. Reviewers examine the recording, monitoring coverage and surrounding context before recording a finding or final decision. Connectivity interruptions and browser/device events are recorded separately from the monitoring flags below.
+
+The current monitoring policy is **`monitoring-2.4`**. Each monitoring run stores its policy snapshot; existing runs can therefore retain earlier thresholds. Policy definitions, inference logic and event aggregation are maintained in [rules.py](backend/app/monitoring/rules.py), [engine.py](backend/app/monitoring/engine.py), [worker.py](backend/app/monitoring/worker.py) and [repository.py](backend/app/monitoring/repository.py).
+
+### Sampling and event thresholds
+
+Video analysis samples **two frames per second**, with each check representing approximately **0.5 seconds** of recorded media. Audio analysis uses blocks of approximately **1.024 seconds**. Duration thresholds refer to qualifying evidence in the recording, not processing time. Audio events can cross a threshold at the next block boundary.
+
+Most duration-based events require consecutive positive checks. A negative check or a processing gap breaks the sequence. Phone, book and framing observations use the rolling-window rules specified below. Aggregation is performed separately for each recording part; sequences do not carry across recording-part boundaries.
+
+### Head orientation
+
+| Observation | Event identifier | Trigger |
+| --- | --- | --- |
+| Sustained head turn | `head_turned` | Sideways head-orientation change relative to the pre-exam session photo for **5 consecutive seconds**. |
+| Downward head orientation | `head_down` | Downward head-orientation change relative to the session photo for **8 consecutive seconds**. |
+| Repeated head-orientation changes | `repeated_look_away` | At least **three completed episodes** of sideways or downward orientation, each lasting **2 seconds or more**, retained in a rolling **60-second window**. Overlapping episodes are merged. |
+
+Orientation is a coarse estimate derived from facial landmarks. The sideways threshold is an absolute landmark-ratio change greater than `0.22`; the downward threshold is a ratio increase greater than `0.20`. These values are not angles in degrees. A usable face and reference pose are required. The system does not track eye gaze or determine what a candidate is looking at.
+
+### Identity and additional people
+
+| Observation | Event identifier | Trigger |
+| --- | --- | --- |
+| Possible identity mismatch | `identity_mismatch` | Face similarity to the session-photo reference remains below the **`0.40` cosine-similarity threshold** for **5 consecutive seconds** of qualifying comparisons. |
+| Face absent | `face_absent` | No qualifying face is detected for **5 consecutive seconds**. This can occur even when part of a person remains visible. |
+| Face could not be checked | `face_unusable` | A detected face remains too small, insufficiently sharp or affected by an obscured image for **8 consecutive seconds**. |
+| Additional person detected | `additional_person` | More than one qualifying face or person is detected for **2 consecutive seconds**. This check is enabled for every assessment. |
+
+Identity continuity compares the dominant visible face with the **pre-exam session photo**, not an ID-card portrait. Face comparison requires sufficient image quality and a suitable orientation. An unusable or strongly angled face is not automatically treated as an identity mismatch. The similarity threshold is not a percentage probability of identity or misconduct.
+
+At the analysed video resolution, detected faces smaller than 25 pixels on either side are excluded. A face is usable for orientation and identity checks when its width and height are at least 75 pixels, its Laplacian sharpness measure is at least `12`, and the image is not classified as obscured.
+
+### Prohibited items
+
+These observations are enabled only for items selected as prohibited in the assessment configuration.
+
+| Observation | Event identifier | Trigger |
+| --- | --- | --- |
+| Phone visible | `mobile_phone` | At least **1.5 seconds of detected evidence within a rolling 3-second window**, tolerating up to **0.5 seconds** of missed detections. |
+| Book visible | `book` | At least **1.5 seconds of detected evidence within a rolling 3-second window**, tolerating up to **0.5 seconds** of missed detections. |
+| Tablet visible | `tablet` | **1.5 consecutive seconds** of detections. A missed check resets the sequence. |
+| Calculator visible | `calculator` | **1.5 consecutive seconds** of detections. A missed check resets the sequence. |
+
+Missed intervals do not contribute to the required evidence duration. For phones and books, three positive half-second checks can qualify despite one intervening negative check. Isolated detections do not qualify.
+
+YOLOX detects people, phones and books with a minimum detection score of `0.45`. RT-DETR, trained on Objects365, detects tablets and calculators with a minimum score of `0.30`. Model scores measure detection strength; they do not establish a rule violation. Object visibility alone does not guarantee an observation: the detector must recognise the object sufficiently often to satisfy the aggregation rule.
+
+### Camera image and framing
+
+| Observation | Event identifier | Trigger |
+| --- | --- | --- |
+| Camera image obscured | `camera_obscured` | Extremely dark, extremely bright or nearly uniform video for **5 consecutive seconds**. |
+| Suspected frozen video | `suspected_frozen_video` | Successive analysed images remain almost identical for **15 consecutive seconds**. |
+| Framing changed | `framing_changed` | **5 seconds of changed-position evidence within a rolling 7-second window**, tolerating up to **1 second** without qualifying evidence. Returning to normal framing resets the sequence. |
+
+An obscured-image signal is generated when mean grayscale brightness is below `15` or above `248`, or grayscale standard deviation is below `4`. Frozen-video detection compares successive 64 × 36 grayscale images and signals a mean absolute difference below `0.20`. A still scene can resemble frozen footage; the observation requires contextual review.
+
+Framing compares the face centre with its initial usable position in that recording part. A Euclidean displacement greater than `0.25` in normalised image coordinates produces a changed-position signal. This identifies a composition change; it does not distinguish camera movement from candidate movement.
+
+### Audio
+
+| Observation | Event identifier | Trigger |
+| --- | --- | --- |
+| Speech activity | `speech` | Speech-positive audio blocks continue for at least **3 seconds**. A block qualifies when at least **30%** of its short segments have a speech probability of **`0.50` or higher**. |
+| Repeated speech activity | `repeated_speech` | At least **three completed speech episodes**, each lasting **2 seconds or more**, retained in a rolling **60-second window**. |
+| Audio clipping | `audio_clipping` | Clipping-positive blocks continue for at least **3 seconds**. A block qualifies when at least **2%** of its samples have an absolute amplitude of **`0.995` or higher** on the normalised audio scale. |
+| Digital audio silence | `digital_audio_silence` | Essentially zero-valued audio continues for at least **10 seconds**. A block qualifies when its maximum absolute sample amplitude is below **`1e-7`**. |
+
+Silero VAD detects speech activity. It does not identify speakers, transcribe speech or determine whether speech concerns the assessment. Digital silence refers to the recorded signal and is distinct from an ordinary quiet room. Clipping indicates possible recording distortion, not misconduct.
+
+### Evidence availability and analysis diagnostics
+
+| Observation | Event identifier | Trigger |
+| --- | --- | --- |
+| Identity reference unavailable | `identity_reference_unavailable` | A usable reference face cannot be extracted from the stored session photo. Identity continuity cannot be checked for the affected recording part. |
+| Video analysis unavailable | `video_analysis_unavailable` | Video processing fails, including decoding or inference errors. |
+| Audio analysis unavailable | `audio_analysis_unavailable` | Audio processing fails, including decoding or inference errors. |
+| Video coverage gap | `video_coverage_gap` | After processing, an interval longer than **2.5 seconds** has no analysed video coverage. |
+| Audio coverage gap | `audio_coverage_gap` | After processing, an interval longer than **2.5 seconds** has no analysed audio coverage. |
+
+Diagnostics describe limitations in the available evidence. They do not establish deliberate interference. Coverage gaps are recalculated after processing retries, so an earlier gap can disappear when analysis fills the missing interval. A completed processing job does not, by itself, establish uninterrupted monitoring coverage.
 
 ## Local setup
 

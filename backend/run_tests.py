@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / 'backend' / 'tests'
-INTEGRATION = {'test_exam_session_integration.py', 'test_esignet_integration.py'}
+INTEGRATION = {'test_exam_session_integration.py', 'test_esignet_integration.py', 'test_session_expiry_integration.py'}
 LIVE = 'test_esignet_live.py'
 
 
